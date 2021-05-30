@@ -4,22 +4,19 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5b241af0266705b1c523c74ec05437c6c343b7b6686fa3b17c06e5ded73f57a5
+-- hash: 3ddcb08a06fe73469bbf6436792d1a37a1303ef1e84bb23c284237475d0efe47
 
 name:           bricktrader
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/bricktrader#readme>
+description:    Please see the README on GitHub at <https://github.com/tamaw/bricktrader#readme>
 homepage:       https://github.com/githubuser/bricktrader#readme
 bug-reports:    https://github.com/githubuser/bricktrader/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2021 Author name here
-license:        BSD3
+author:         Tama Waddell
+maintainer:     Tama Waddell
+copyright:      2021 Tama Waddell
+license:        AGPL3
 license-file:   LICENSE
 build-type:     Simple
-extra-source-files:
-    README.md
-    ChangeLog.md
 
 source-repository head
   type: git
@@ -27,13 +24,26 @@ source-repository head
 
 library
   exposed-modules:
+      Binance
       Lib
+      UI
   other-modules:
       Paths_bricktrader
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , aeson-casing
+    , base >=4.7 && <5
+    , brick
+    , containers
+    , lens
+    , lens-aeson
+    , text
+    , time
+    , vector
+    , vty
+    , wreq
   default-language: Haskell2010
 
 executable bricktrader-exe
@@ -42,10 +52,21 @@ executable bricktrader-exe
       Paths_bricktrader
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , aeson-casing
+    , base >=4.7 && <5
+    , brick
     , bricktrader
+    , containers
+    , lens
+    , lens-aeson
+    , text
+    , time
+    , vector
+    , vty
+    , wreq
   default-language: Haskell2010
 
 test-suite bricktrader-test
@@ -57,6 +78,17 @@ test-suite bricktrader-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , aeson-casing
+    , base >=4.7 && <5
+    , brick
     , bricktrader
+    , containers
+    , lens
+    , lens-aeson
+    , text
+    , time
+    , vector
+    , vty
+    , wreq
   default-language: Haskell2010

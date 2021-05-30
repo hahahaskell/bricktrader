@@ -9,5 +9,4 @@ snapshots:
     size: 567675
     url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/13.yaml
     sha256: 84fa3ab606af79b1239ec213e8db5d49e4857f461eda9ac61fe589c967643b7d
-  original:
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/13.yaml
+  original: lts-17.13
