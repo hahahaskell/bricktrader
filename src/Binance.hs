@@ -46,13 +46,12 @@ instance FromJSON PriceResponse where
             PriceResponse <$> o .: "symbol"
                           <*> o .: "price"
 
-prices :: IO [PriceResponse]
-prices = do
+prices :: [Text] ->  IO [PriceResponse]
+prices symbols = do
     r <- asJSON =<< get priceUrl
     return $ filter match (r ^. responseBody)
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/price"
-        symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
         match a = priceResponseSymbol a `elem` symbols
 
 --  [{

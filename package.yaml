@@ -1,7 +1,7 @@
 name:                bricktrader
 version:             0.1.0.0
 github:              "githubuser/bricktrader"
-license:             AGPL3
+license:             AGPL-3
 author:              "Tama Waddell"
 copyright:           "2021 Tama Waddell"
 description:         Please see the README on GitHub at <https://github.com/tamaw/bricktrader#readme>

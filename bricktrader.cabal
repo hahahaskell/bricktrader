@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3ddcb08a06fe73469bbf6436792d1a37a1303ef1e84bb23c284237475d0efe47
+-- hash: 28353f088b9d797811e8bf4c5ea549cbbd89b3bf09013d5e0673ae38768fe795
 
 name:           bricktrader
 version:        0.1.0.0
@@ -14,7 +14,7 @@ bug-reports:    https://github.com/githubuser/bricktrader/issues
 author:         Tama Waddell
 maintainer:     Tama Waddell
 copyright:      2021 Tama Waddell
-license:        AGPL3
+license:        AGPL-3
 license-file:   LICENSE
 build-type:     Simple
 
