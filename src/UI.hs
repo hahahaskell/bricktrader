@@ -3,9 +3,8 @@
 module UI (runTui) where
 
 import Brick
+import Brick.BChan (newBChan, writeBChan, BChan)
 import qualified Graphics.Vty as V
-import Brick.BChan (newBChan, writeBChan)
-
 import qualified Brick.Main as M
 import qualified Brick.Types as T
 import qualified Brick.Widgets.List as L
@@ -20,17 +19,11 @@ import qualified Data.Text as T
 import Control.Monad (void, forever)
 import Control.Concurrent (threadDelay, forkIO)
 
-import Data.Text (Text, unpack)
-import Data.Map as Map
-
-import Network.Wreq
-import Control.Lens
-import Data.Aeson (Value, toJSON)
-import Data.Aeson.Lens (key, _String)
-
+import Data.Text (Text, unpack, pack)
 import Data.Time
 
 import Binance
+import Control.Monad.IO.Class (liftIO)
 
 data AppState = AppState
     { loggerContents :: [Text]
@@ -44,7 +37,7 @@ data AppEvents =
 
 initialState :: AppState
 initialState =
-    AppState { loggerContents = []
+    AppState { loggerContents = ["Welcome to BrickTrader."]
              , tickerContents = "..."
              }
 
@@ -68,7 +61,7 @@ drawUI s = [a]
                                 withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "pending sell orders")
                                 ])
                     ]
-            <=> withAttr "statusLine" (padRight Max $ str "[P] Purchase Order [S] Sell Order [Q] Quit [?] Help")
+            <=> withAttr "statusLine" (padRight Max $ str "[P] Purchase Order [S] Sell Order [Q] Quit [H] Help")
 
 theMap :: AttrMap
 theMap = attrMap V.defAttr
@@ -78,10 +71,15 @@ theMap = attrMap V.defAttr
 
 handleEvent :: AppState -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppState)
 handleEvent s (AppEvent (LogEvent l)) = continue $ s { loggerContents = l : loggerContents s }
-handleEvent s (AppEvent (PriceEvent p)) = continue $ s { tickerContents = renderTicker p }
+handleEvent s (AppEvent (PriceEvent p)) = continue $ s { tickerContents = handleTicker p }
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
 handleEvent s _ = continue s
+
+handleTicker :: [PriceResponse] -> String
+handleTicker pr = "| " ++ foldMap format pr
+    where
+        format (PriceResponse s p) = unpack s ++ " $" ++ unpack p ++ " | "
 
 theApp :: App AppState AppEvents ()
 theApp = M.App { appDraw         = drawUI
@@ -103,15 +101,19 @@ runTui = do
         prices <- prices symbols
         writeBChan chan $ PriceEvent prices
 
-        threadDelay 1000000
+        _ <- logger chan "testtingg"
 
+        threadDelay 1000000
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
-renderTicker :: [PriceResponse] -> String
-renderTicker = foldMap format
+logger :: BChan AppEvents -> String -> IO ()
+logger c m = do
+        now <- getZonedTime
+        writeBChan c $ LogEvent $ pack $ logDateTime now ++ m
+        return ()
     where
-        format (PriceResponse s p) = unpack s ++ " $" ++ unpack p ++ " | "
+        logDateTime = formatTime defaultTimeLocale "%b %e %T > "
 
 renderBottomUp :: [Widget n] -> Widget n
 renderBottomUp ws =
