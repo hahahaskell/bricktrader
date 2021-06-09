@@ -45,7 +45,7 @@ drawUI :: AppState -> [Widget ()]
 drawUI s = [a]
     where
         a =
-            hBox [str $ tickerContents s] -- "BTC/AUD $73,000.00 ▼ -0.3%"
+            hBox [str $ tickerContents s, padLeft Max $ str "Status"] -- "BTC/AUD $73,000.00 ▼ -0.3%"
             <=> B.hBorder
             <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 1",
                     hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 2",

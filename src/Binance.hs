@@ -12,7 +12,7 @@ import Network.Wreq
 import Control.Lens
 import Data.Aeson (Value, toJSON, FromJSON (parseJSON), Options (fieldLabelModifier), genericParseJSON, defaultOptions, withObject, (.:))
 import Data.Aeson.Lens (key, _String)
-import Data.Aeson.Casing ( camelCase )
+import Data.Aeson.Casing ( camelCase, aesonPrefix )
 import qualified Control.Exception as E
 import GHC.Generics (Generic)
 
@@ -79,34 +79,31 @@ prices symbols = do
 --     }]
 
 data TickerResponse = TickerResponse
-    { tickerResponseSymbol             :: Text
-    , tickerResponsePriceChange        :: Text
-    , tickerResponsePriceChangePercent :: Text
-    , tickerResponseWeightedAvgPrice   :: Text
-    , tickerResponsePrevClosePrice     :: Text
-    , tickerResponseLastPrice          :: Text
-    , tickerResponseLastQty            :: Text
-    , tickerResponseBidPrice           :: Text
-    , tickerResponseBidQty             :: Text
-    , tickerResponseAskPrice           :: Text
-    , tickerResponseAskQty             :: Text
-    , tickerResponseOpenPrice          :: Text
-    , tickerResponseHighPrice          :: Text
-    , tickerResponseLowPrice           :: Text
-    , tickerResponseVolume             :: Text
-    , tickerResponseQuoteVolume        :: Text
-    , tickerResponseOpenTime           :: Int
-    , tickerResponseCloseTime          :: Int
-    , tickerResponseFirstId            :: Int
-    , tickerResponseLastId             :: Int
-    , tickerResponseCount              :: Int
-    }
+    { tickerresponseSymbol             :: Text
+    , tickerresponsePriceChange        :: Text
+    , tickerresponsePriceChangePercent :: Text
+    , tickerresponseWeightedAvgPrice   :: Text
+    , tickerresponsePrevClosePrice     :: Text
+    , tickerresponseLastPrice          :: Text
+    , tickerresponseLastQty            :: Text
+    , tickerresponseBidPrice           :: Text
+    , tickerresponseBidQty             :: Text
+    , tickerresponseAskPrice           :: Text
+    , tickerresponseAskQty             :: Text
+    , tickerresponseOpenPrice          :: Text
+    , tickerresponseHighPrice          :: Text
+    , tickerresponseLowPrice           :: Text
+    , tickerresponseVolume             :: Text
+    , tickerresponseQuoteVolume        :: Text
+    , tickerresponseOpenTime           :: Int
+    , tickerresponseCloseTime          :: Int
+    , tickerresponseFirstId            :: Int
+    , tickerresponseLastId             :: Int
+    , tickerresponseCount              :: Int }
     deriving (Generic, Show)
 
 instance FromJSON TickerResponse where
-    parseJSON = genericParseJSON defaultOptions
-        { fieldLabelModifier = camelCase . drop 14
-        }
+    parseJSON = genericParseJSON $ aesonPrefix camelCase
 
 ticker :: IO [TickerResponse]
 ticker = do
@@ -115,5 +112,21 @@ ticker = do
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/24hr"
         symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
-        match a = tickerResponseSymbol a `elem` symbols
+        match a = tickerresponseSymbol a `elem` symbols
 
+
+data StatusResponse = Status
+    { statusresponseStatus :: Int
+    , statusresponseMsg    :: Text
+    }
+    deriving (Generic, Show)
+
+instance FromJSON StatusResponse where
+    parseJSON = genericParseJSON $ aesonPrefix camelCase
+
+getStatus :: IO StatusResponse
+getStatus = do
+    r <- asJSON =<< get statusUrl
+    return $ r ^. responseBody
+    where
+        statusUrl = "https://api.binance.com/sapi/v1/system/status"
