@@ -3,18 +3,20 @@
 module Binance where
 
 import Data.Text (Text)
-import Data.Char
-import qualified Data.Text as T
-import Data.Map as Map (Map)
+import Data.Char()
+import Data.Map()
 
 import Network.Wreq
 
 import Control.Lens
-import Data.Aeson (Value, toJSON, FromJSON (parseJSON), Options (fieldLabelModifier), genericParseJSON, defaultOptions, withObject, (.:))
+import Data.Aeson (FromJSON (parseJSON), genericParseJSON, withObject, (.:))
 import Data.Aeson.Lens (key, _String)
 import Data.Aeson.Casing ( camelCase, aesonPrefix )
-import qualified Control.Exception as E
 import GHC.Generics (Generic)
+
+data BinanceStatus = Online | Offline
+    deriving (Show)
+
 
 -- {
 --     "symbol": "LTCBTC",
@@ -114,7 +116,6 @@ ticker = do
         symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
         match a = tickerresponseSymbol a `elem` symbols
 
-
 data StatusResponse = Status
     { statusresponseStatus :: Int
     , statusresponseMsg    :: Text
@@ -124,9 +125,15 @@ data StatusResponse = Status
 instance FromJSON StatusResponse where
     parseJSON = genericParseJSON $ aesonPrefix camelCase
 
-getStatus :: IO StatusResponse
-getStatus = do
-    r <- asJSON =<< get statusUrl
-    return $ r ^. responseBody
+-- SAPI preceeds WAPI
+systemStatus :: IO BinanceStatus
+systemStatus = do
+    r <- get statusUrl
+    let msg = r ^. (responseBody . key "msg" . _String)
+
+    return $ case msg of
+        "normal" -> Online
+        _ -> Offline
     where
         statusUrl = "https://api.binance.com/sapi/v1/system/status"
+

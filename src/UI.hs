@@ -28,24 +28,27 @@ import Control.Monad.IO.Class (liftIO)
 data AppState = AppState
     { loggerContents :: [Text]
     , tickerContents :: String
+    , binanceStatus :: String
     }
 data AppName = Main
 
 data AppEvents =
      LogEvent Text
+     | StatusEvent BinanceStatus
      | PriceEvent [PriceResponse]
 
 initialState :: AppState
 initialState =
     AppState { loggerContents = ["Welcome to BrickTrader."]
              , tickerContents = "..."
+             , binanceStatus = "⏳"
              }
 
 drawUI :: AppState -> [Widget ()]
 drawUI s = [a]
     where
         a =
-            hBox [str $ tickerContents s, padLeft Max $ str "Status"] -- "BTC/AUD $73,000.00 ▼ -0.3%"
+            hBox [str $ tickerContents s, padLeft Max $ str $ binanceStatus s ] -- "BTC/AUD $73,000.00 ▼ -0.3%"
             <=> B.hBorder
             <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 1",
                     hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 2",
@@ -66,20 +69,27 @@ drawUI s = [a]
 theMap :: AttrMap
 theMap = attrMap V.defAttr
     [
-        ("statusLine", V.white `on` V.blue)
+        ("statusLine", V.white `on` V.blue),
+        ("online", fg V.green),
+        ("offline", fg V.red)
     ]
 
 handleEvent :: AppState -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppState)
 handleEvent s (AppEvent (LogEvent l)) = continue $ s { loggerContents = l : loggerContents s }
-handleEvent s (AppEvent (PriceEvent p)) = continue $ s { tickerContents = handleTicker p }
+handleEvent s (AppEvent (PriceEvent p)) = continue $ s { tickerContents = handleTickerEvent p }
+handleEvent s (AppEvent (StatusEvent t)) = continue $ s { binanceStatus = handleStatusEvent t }
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
 handleEvent s _ = continue s
 
-handleTicker :: [PriceResponse] -> String
-handleTicker pr = "| " ++ foldMap format pr
+handleTickerEvent :: [PriceResponse] -> String
+handleTickerEvent pr = "| " ++ foldMap format pr
     where
         format (PriceResponse s p) = unpack s ++ " $" ++ unpack p ++ " | "
+
+handleStatusEvent :: BinanceStatus -> String
+handleStatusEvent Online = "🟢  "
+handleStatusEvent Offline = "🔴  "
 
 theApp :: App AppState AppEvents ()
 theApp = M.App { appDraw         = drawUI
@@ -95,17 +105,27 @@ runTui = do
     vty <- V.mkVty cfg
     chan <- newBChan 10
 
-    void $ forkIO $ forever $ do
-        let symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
-
-        prices <- prices symbols
-        writeBChan chan $ PriceEvent prices
-
-        _ <- logger chan "testtingg"
-
-        threadDelay 1000000
+    void $ forkIO $ forever $ tickerJob chan 1000000
+    void $ forkIO $ forever $ statusJob chan 1000000
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
+
+tickerJob :: BChan AppEvents -> Int -> IO ()
+tickerJob chan delay = do
+    let symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
+
+    prices <- prices symbols
+    writeBChan chan $ PriceEvent prices
+
+    threadDelay delay
+
+statusJob :: BChan AppEvents -> Int -> IO ()
+statusJob chan delay = do
+    binanceStatus <- systemStatus
+    writeBChan chan $ StatusEvent binanceStatus
+    -- void <- logger chan (show binanceStatus)
+
+    threadDelay delay
 
 logger :: BChan AppEvents -> String -> IO ()
 logger c m = do
