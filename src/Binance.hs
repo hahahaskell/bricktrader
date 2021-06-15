@@ -3,31 +3,94 @@
 module Binance where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Char()
 import Data.Map()
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as LBS
 
 import Network.Wreq
+import qualified Network.HTTP.Client as N
+import Network.HTTP.Types.Header
 
-import Control.Lens
+import Control.Lens ( (^.), (^?) )
 import Data.Aeson (FromJSON (parseJSON), genericParseJSON, withObject, (.:))
-import Data.Aeson.Lens (key, _String)
+import Data.Aeson.Lens (key, _String, AsNumber (_Integer))
 import Data.Aeson.Casing ( camelCase, aesonPrefix )
-import GHC.Generics (Generic)
 
-data BinanceStatus = Online | Offline
+import GHC.Generics (Generic)
+import qualified Control.Exception as E
+import Text.Read (readMaybe)
+import Data.Maybe (fromMaybe)
+
+type Seconds = Int
+
+data BinanceResult a b = Success a | Failure b deriving (Show)
+-- data BinanceResult a = Success (a, WeightCount) | Failure BinanceHttpResponse deriving (Show)
+
+-- https://binance-docs.github.io/apidocs/spot/en/#general-info
+data BinanceHttpResponse a =
+     Ok a
+     | SecurityViolation
+     | BackOff Seconds
+     | IpBan Seconds
+     | Fault String
+     | ConnectionFailed String
+     deriving (Show)
+
+-- newtype RetryAfter = RetryAfter Seconds
+newtype WeightCount = WeightCount Int deriving (Show)
+newtype OrderCount = OrderCount Int
+
+-- data BinanceSuccessResult a = SuccessResponse WeightCount a
+--     deriving (Show)
+
+data BinanceFailureResult =
+        Halt String
+        | Sleep Seconds
+        | Retry String
     deriving (Show)
 
+getHeader :: Response body -> HeaderName -> String
+getHeader res name = BSC.unpack $ res ^. responseHeader name
+
+getWeightCountHeader :: Response body -> WeightCount
+getWeightCountHeader res = WeightCount . read $ getHeader res "x-mbx-used-weight-1m"
+
+httpHandle :: N.HttpException -> IO (BinanceHttpResponse a)
+httpHandle (N.HttpExceptionRequest _ (N.StatusCodeException res _)) =
+    return $ case res ^. responseStatus . statusMessage of
+        "FORBIDDEN"         -> SecurityViolation -- 403
+        "TOO MANY REQUESTS" -> BackOff $ getRetryAfter res -- 429
+        "I'M A TEAPOT"      -> IpBan $ getRetryAfter res -- 418
+        s                   -> Fault $ BSC.unpack s
+  where
+    getRetryAfter :: Response () -> Int
+    -- getRetryAfter res = fromMaybe 0 (readMaybe (getHeader res "Retry-After") :: Maybe Int)
+    getRetryAfter res = read $ getHeader res "Retry-After" :: Int
+httpHandle e = return . ConnectionFailed $ show e
+
+mkFailureResult :: BinanceHttpResponse a -> BinanceFailureResult
+mkFailureResult SecurityViolation = Halt "Binance's WAF has rejected the request."
+mkFailureResult (IpBan s) = Halt $ "IP banned for " <> show s
+mkFailureResult (Fault s) = Halt s
+mkFailureResult (BackOff s) = Sleep s
+mkFailureResult (ConnectionFailed s) = Retry s
 
 -- {
 --     "symbol": "LTCBTC",
 --     "price": "0.00637700"
 -- }
-price :: String -> IO Text
+price :: String -> IO (BinanceResult (Text, WeightCount) BinanceFailureResult)
 price symbol = do
-    r <- get $ priceUrl ++ "?symbol=" ++ symbol
-    return $ r ^. (responseBody  . key "price" . _String)
+    res <- (Ok <$> get priceUrl) `E.catch` httpHandle
+
+    return $ case res of
+            Ok r -> Success (r ^. (responseBody  . key "price" . _String), getWeightCountHeader r)
+            f -> Failure $ mkFailureResult f
     where
-        priceUrl = "https://api.binance.com/api/v3/ticker/price"
+        priceUrl = "https://api.binance.com/api/v3/ticker/price" ++ "?symbol=" ++ symbol
+        getWeightCount res = WeightCount . read $ getHeader res "x-mbx-used-weight-1m"
 
 --- [{
 --     "symbol": "ETHBTC",
@@ -48,13 +111,18 @@ instance FromJSON PriceResponse where
             PriceResponse <$> o .: "symbol"
                           <*> o .: "price"
 
-prices :: [Text] ->  IO [PriceResponse]
+prices :: [Text] -> IO (BinanceResult ([PriceResponse], WeightCount) BinanceFailureResult)
 prices symbols = do
-    r <- asJSON =<< get priceUrl
-    return $ filter match (r ^. responseBody)
+    res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+
+    return $ case res of
+            Ok r -> Success (filter match (r ^. responseBody), getWeightCountHeader r)
+            f -> Failure $ mkFailureResult f
+
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/price"
         match a = priceResponseSymbol a `elem` symbols
+        pricesMatched res = filter match (res ^. responseBody)
 
 --  [{
 --         "symbol": "BTCAUD",
@@ -116,24 +184,23 @@ ticker = do
         symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
         match a = tickerresponseSymbol a `elem` symbols
 
-data StatusResponse = Status
-    { statusresponseStatus :: Int
-    , statusresponseMsg    :: Text
-    }
-    deriving (Generic, Show)
+data SystemStatusResponse =
+    Online
+    | Maintenance String
+    | Offline String
+    deriving (Show)
 
-instance FromJSON StatusResponse where
-    parseJSON = genericParseJSON $ aesonPrefix camelCase
-
--- SAPI preceeds WAPI
-systemStatus :: IO BinanceStatus
+systemStatus :: IO SystemStatusResponse
 systemStatus = do
-    r <- get statusUrl
-    let msg = r ^. (responseBody . key "msg" . _String)
+    res <- (Ok <$> get statusUrl) `E.catch` httpHandle
 
-    return $ case msg of
-        "normal" -> Online
-        _ -> Offline
+    return $ case res of
+        Ok r -> case r ^. (responseBody . key "msg" . _String) of
+            "normal" -> Online
+            m        -> Maintenance $ T.unpack m
+        s -> Offline $ show s
+        -- s -> Offline (s ^. responseHeader )
     where
-        statusUrl = "https://api.binance.com/sapi/v1/system/status"
+        -- SAPI preceeds WAPI
+          statusUrl = "https://api.binance.com/sapi/v1/system/status"
 

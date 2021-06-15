@@ -34,13 +34,13 @@ data AppName = Main
 
 data AppEvents =
      LogEvent Text
-     | StatusEvent BinanceStatus
+     | StatusEvent SystemStatusResponse
      | PriceEvent [PriceResponse]
 
 initialState :: AppState
 initialState =
     AppState { loggerContents = ["Welcome to BrickTrader."]
-             , tickerContents = "..."
+             , tickerContents = ""
              , binanceStatus = "⏳"
              }
 
@@ -48,7 +48,7 @@ drawUI :: AppState -> [Widget ()]
 drawUI s = [a]
     where
         a =
-            hBox [str $ tickerContents s, padLeft Max $ str $ binanceStatus s ] -- "BTC/AUD $73,000.00 ▼ -0.3%"
+            hBox [str $ tickerContents s, padLeft Max $ str $ binanceStatus s <> "  " ] -- "BTC/AUD $73,000.00 ▼ -0.3%"
             <=> B.hBorder
             <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 1",
                     hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 2",
@@ -87,9 +87,10 @@ handleTickerEvent pr = "| " ++ foldMap format pr
     where
         format (PriceResponse s p) = unpack s ++ " $" ++ unpack p ++ " | "
 
-handleStatusEvent :: BinanceStatus -> String
-handleStatusEvent Online = "🟢  "
-handleStatusEvent Offline = "🔴  "
+handleStatusEvent :: SystemStatusResponse -> String
+handleStatusEvent Online = "🟢"
+handleStatusEvent (Offline _) = "🔴"
+handleStatusEvent (Maintenance _) = "⚒"
 
 theApp :: App AppState AppEvents ()
 theApp = M.App { appDraw         = drawUI
@@ -101,6 +102,8 @@ theApp = M.App { appDraw         = drawUI
 
 runTui :: IO ()
 runTui = do
+    -- setUncaughtExceptionHandler ""
+
     cfg <- V.standardIOConfig
     vty <- V.mkVty cfg
     chan <- newBChan 10
@@ -115,15 +118,17 @@ tickerJob chan delay = do
     let symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
 
     prices <- prices symbols
-    writeBChan chan $ PriceEvent prices
+    case prices of
+        Success (p,w) -> writeBChan chan $ PriceEvent p
 
     threadDelay delay
 
 statusJob :: BChan AppEvents -> Int -> IO ()
 statusJob chan delay = do
     binanceStatus <- systemStatus
+
     writeBChan chan $ StatusEvent binanceStatus
-    -- void <- logger chan (show binanceStatus)
+    -- _ <- logger chan (show binanceStatus)
 
     threadDelay delay
 

@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 28353f088b9d797811e8bf4c5ea549cbbd89b3bf09013d5e0673ae38768fe795
+-- hash: 6b5ec08e5b6eb82180904c54510b9dff17d38b28cb1ac9cae624d47018e05254
 
 name:           bricktrader
 version:        0.1.0.0
@@ -36,7 +36,10 @@ library
     , aeson-casing
     , base >=4.7 && <5
     , brick
+    , bytestring
     , containers
+    , http-client
+    , http-types
     , lens
     , lens-aeson
     , text
@@ -59,7 +62,10 @@ executable bricktrader-exe
     , base >=4.7 && <5
     , brick
     , bricktrader
+    , bytestring
     , containers
+    , http-client
+    , http-types
     , lens
     , lens-aeson
     , text
@@ -83,7 +89,10 @@ test-suite bricktrader-test
     , base >=4.7 && <5
     , brick
     , bricktrader
+    , bytestring
     , containers
+    , http-client
+    , http-types
     , lens
     , lens-aeson
     , text

@@ -8,6 +8,7 @@ description:         Please see the README on GitHub at <https://github.com/tama
 
 dependencies:
 - base >= 4.7 && < 5
+- bytestring
 - text
 - containers
 - brick
@@ -15,6 +16,8 @@ dependencies:
 - vector
 - time
 - lens
+- http-client
+- http-types
 - wreq
 - aeson
 - lens-aeson
