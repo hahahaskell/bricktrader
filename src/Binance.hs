@@ -12,6 +12,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Network.Wreq
 import qualified Network.HTTP.Client as N
 import Network.HTTP.Types.Header
+import qualified Network.Wreq.Session as S
 
 import Control.Lens ( (^.), (^?) )
 import Data.Aeson (FromJSON (parseJSON), genericParseJSON, withObject, (.:))
@@ -26,7 +27,6 @@ import Data.Maybe (fromMaybe)
 type Seconds = Int
 
 data BinanceResult a b = Success a | Failure b deriving (Show)
--- data BinanceResult a = Success (a, WeightCount) | Failure BinanceHttpResponse deriving (Show)
 
 -- https://binance-docs.github.io/apidocs/spot/en/#general-info
 data BinanceHttpResponse a =
@@ -39,8 +39,13 @@ data BinanceHttpResponse a =
      deriving (Show)
 
 -- newtype RetryAfter = RetryAfter Seconds
-newtype WeightCount = WeightCount Int deriving (Show)
+newtype WeightCount = WeightCount Int
 newtype OrderCount = OrderCount Int
+
+instance Show WeightCount where
+    show (WeightCount a) = show a
+instance Show OrderCount where
+    show (OrderCount a) = show a
 
 -- data BinanceSuccessResult a = SuccessResponse WeightCount a
 --     deriving (Show)
@@ -50,6 +55,9 @@ data BinanceFailureResult =
         | Sleep Seconds
         | Retry String
     deriving (Show)
+
+mkSession :: IO S.Session
+mkSession = S.newAPISession
 
 getHeader :: Response body -> HeaderName -> String
 getHeader res name = BSC.unpack $ res ^. responseHeader name
@@ -90,7 +98,6 @@ price symbol = do
             f -> Failure $ mkFailureResult f
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/price" ++ "?symbol=" ++ symbol
-        getWeightCount res = WeightCount . read $ getHeader res "x-mbx-used-weight-1m"
 
 --- [{
 --     "symbol": "ETHBTC",
@@ -111,18 +118,14 @@ instance FromJSON PriceResponse where
             PriceResponse <$> o .: "symbol"
                           <*> o .: "price"
 
-prices :: [Text] -> IO (BinanceResult ([PriceResponse], WeightCount) BinanceFailureResult)
-prices symbols = do
+prices :: IO (BinanceResult ([PriceResponse], WeightCount) BinanceFailureResult)
+prices = do
     res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
-
     return $ case res of
-            Ok r -> Success (filter match (r ^. responseBody), getWeightCountHeader r)
+            Ok r -> Success (r ^. responseBody, getWeightCountHeader r)
             f -> Failure $ mkFailureResult f
-
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/price"
-        match a = priceResponseSymbol a `elem` symbols
-        pricesMatched res = filter match (res ^. responseBody)
 
 --  [{
 --         "symbol": "BTCAUD",
@@ -175,14 +178,15 @@ data TickerResponse = TickerResponse
 instance FromJSON TickerResponse where
     parseJSON = genericParseJSON $ aesonPrefix camelCase
 
-ticker :: IO [TickerResponse]
+ticker :: IO (BinanceResult ([TickerResponse], WeightCount) BinanceFailureResult)
 ticker = do
-    r <- asJSON =<< get priceUrl
-    return $ filter match (r ^. responseBody)
+    res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+
+    return $ case res of
+        Ok r -> Success (r ^. responseBody, getWeightCountHeader r)
+        f -> Failure $ mkFailureResult f
     where
         priceUrl = "https://api.binance.com/api/v3/ticker/24hr"
-        symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
-        match a = tickerresponseSymbol a `elem` symbols
 
 data SystemStatusResponse =
     Online

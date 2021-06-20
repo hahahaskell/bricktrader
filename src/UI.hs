@@ -19,36 +19,39 @@ import qualified Data.Text as T
 import Control.Monad (void, forever)
 import Control.Concurrent (threadDelay, forkIO)
 
+import Text.Printf
 import Data.Text (Text, unpack, pack)
-import Data.Time
+import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
 
 import Binance
-import Control.Monad.IO.Class (liftIO)
 
 data AppState = AppState
     { loggerContents :: [Text]
-    , tickerContents :: String
-    , binanceStatus :: String
+    , tickerContent :: String
+    , binanceStatusContent :: String
+    , weightCountContent :: String
     }
 data AppName = Main
 
 data AppEvents =
      LogEvent Text
      | StatusEvent SystemStatusResponse
-     | PriceEvent [PriceResponse]
+     | TickerEvent [TickerResponse]
+     | WeightEvent WeightCount
 
 initialState :: AppState
 initialState =
     AppState { loggerContents = ["Welcome to BrickTrader."]
-             , tickerContents = ""
-             , binanceStatus = "⏳"
+             , tickerContent = ""
+             , binanceStatusContent = "⏳"
+             , weightCountContent = "0/1200"
              }
 
 drawUI :: AppState -> [Widget ()]
 drawUI s = [a]
     where
         a =
-            hBox [str $ tickerContents s, padLeft Max $ str $ binanceStatus s <> "  " ] -- "BTC/AUD $73,000.00 ▼ -0.3%"
+            hBox [str $ tickerContent s, padLeft Max $ str $ weightCountContent s ++ " " ++ binanceStatusContent s ++ "  " ]
             <=> B.hBorder
             <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 1",
                     hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 2",
@@ -76,21 +79,29 @@ theMap = attrMap V.defAttr
 
 handleEvent :: AppState -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppState)
 handleEvent s (AppEvent (LogEvent l)) = continue $ s { loggerContents = l : loggerContents s }
-handleEvent s (AppEvent (PriceEvent p)) = continue $ s { tickerContents = handleTickerEvent p }
-handleEvent s (AppEvent (StatusEvent t)) = continue $ s { binanceStatus = handleStatusEvent t }
+handleEvent s (AppEvent (TickerEvent p)) = continue $ s { tickerContent = handleTickerEvent p }
+handleEvent s (AppEvent (StatusEvent t)) = continue $ s { binanceStatusContent = handleStatusEvent t }
+handleEvent s (AppEvent (WeightEvent w)) = continue $ s { weightCountContent = handleWeightEvent w }
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
 handleEvent s _ = continue s
 
-handleTickerEvent :: [PriceResponse] -> String
+handleTickerEvent :: [TickerResponse] -> String
 handleTickerEvent pr = "| " ++ foldMap format pr
     where
-        format (PriceResponse s p) = unpack s ++ " $" ++ unpack p ++ " | "
+        format t = printf "%s $%.2f %c %.2f%% | " (symbol t) (lastPrice t) (arrow $ percent t) (percent t)
+        symbol t = unpack $ tickerresponseSymbol t
+        percent t = read $ unpack (tickerresponsePriceChangePercent t) :: Double
+        lastPrice t =  read $ unpack (tickerresponseLastPrice t) :: Double
+        arrow p = if p < 0 then '⯆' else '⯅'
 
 handleStatusEvent :: SystemStatusResponse -> String
 handleStatusEvent Online = "🟢"
 handleStatusEvent (Offline _) = "🔴"
-handleStatusEvent (Maintenance _) = "⚒"
+handleStatusEvent (Maintenance _) = "🚧"
+
+handleWeightEvent :: WeightCount -> String
+handleWeightEvent w = show w ++ "/1200"
 
 theApp :: App AppState AppEvents ()
 theApp = M.App { appDraw         = drawUI
@@ -102,33 +113,41 @@ theApp = M.App { appDraw         = drawUI
 
 runTui :: IO ()
 runTui = do
-    -- setUncaughtExceptionHandler ""
-
     cfg <- V.standardIOConfig
     vty <- V.mkVty cfg
     chan <- newBChan 10
 
-    void $ forkIO $ forever $ tickerJob chan 1000000
+    -- setUncaughtExceptionHandler ""
+    void $ forkIO $ forever $ tickerJob chan 10000000
     void $ forkIO $ forever $ statusJob chan 1000000
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
 tickerJob :: BChan AppEvents -> Int -> IO ()
 tickerJob chan delay = do
-    let symbols = ["BTCAUD", "ETHAUD", "XRPAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
+    prices <- ticker
 
-    prices <- prices symbols
     case prices of
-        Success (p,w) -> writeBChan chan $ PriceEvent p
+        Success (p,w) -> do
+            writeBChan chan $ TickerEvent $ filter match p
+            writeBChan chan $ WeightEvent w
+        Failure s  -> logger chan "Error fetching ticker prices."
 
     threadDelay delay
+    where
+        symbols = ["BTCAUD", "ETHAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
+        match p = tickerresponseSymbol p `elem` symbols
 
 statusJob :: BChan AppEvents -> Int -> IO ()
 statusJob chan delay = do
     binanceStatus <- systemStatus
 
     writeBChan chan $ StatusEvent binanceStatus
-    -- _ <- logger chan (show binanceStatus)
+
+    case binanceStatus of
+                Offline s -> logger chan "Binance is offline."
+                Maintenance s -> logger chan "Binance is down for maintenance."
+                Online -> pure ()
 
     threadDelay delay
 
