@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6b5ec08e5b6eb82180904c54510b9dff17d38b28cb1ac9cae624d47018e05254
+-- hash: 890cb48b3cc665947bcb957d595c66081358b943448d54ffd764121f77a6ba0d
 
 name:           bricktrader
 version:        0.1.0.0
@@ -44,6 +44,7 @@ library
     , lens-aeson
     , text
     , time
+    , unix
     , vector
     , vty
     , wreq
@@ -70,6 +71,7 @@ executable bricktrader-exe
     , lens-aeson
     , text
     , time
+    , unix
     , vector
     , vty
     , wreq
@@ -97,6 +99,7 @@ test-suite bricktrader-test
     , lens-aeson
     , text
     , time
+    , unix
     , vector
     , vty
     , wreq

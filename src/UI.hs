@@ -24,6 +24,8 @@ import Data.Text (Text, unpack, pack)
 import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
 
 import Binance
+import Network.Wreq.Session (Session)
+import Lib (BrickTraderConfig(BrickTraderConfig))
 
 data AppState = AppState
     { loggerContents :: [Text]
@@ -36,12 +38,12 @@ data AppName = Main
 data AppEvents =
      LogEvent Text
      | StatusEvent SystemStatusResponse
-     | TickerEvent [TickerResponse]
+     | TickerEvent [Ticker]
      | WeightEvent WeightCount
 
 initialState :: AppState
 initialState =
-    AppState { loggerContents = ["Welcome to BrickTrader."]
+    AppState { loggerContents = ["Welcome to BrickTrader. "]
              , tickerContent = ""
              , binanceStatusContent = "⏳"
              , weightCountContent = "0/1200"
@@ -86,13 +88,13 @@ handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
 handleEvent s _ = continue s
 
-handleTickerEvent :: [TickerResponse] -> String
+handleTickerEvent :: [Ticker] -> String
 handleTickerEvent pr = "| " ++ foldMap format pr
     where
         format t = printf "%s $%.2f %c %.2f%% | " (symbol t) (lastPrice t) (arrow $ percent t) (percent t)
-        symbol t = unpack $ tickerresponseSymbol t
-        percent t = read $ unpack (tickerresponsePriceChangePercent t) :: Double
-        lastPrice t =  read $ unpack (tickerresponseLastPrice t) :: Double
+        symbol t = unpack $ tickerSymbol t
+        percent t = read $ unpack (tickerPriceChangePercent t) :: Double
+        lastPrice t =  read $ unpack (tickerLastPrice t) :: Double
         arrow p = if p < 0 then '⯆' else '⯅'
 
 handleStatusEvent :: SystemStatusResponse -> String
@@ -111,43 +113,61 @@ theApp = M.App { appDraw         = drawUI
                , appStartEvent   = return
                }
 
-runTui :: IO ()
-runTui = do
+runTui :: BrickTraderConfig -> IO ()
+runTui config = do
     cfg <- V.standardIOConfig
     vty <- V.mkVty cfg
     chan <- newBChan 10
 
+    sess <- mkSession
+    -- authsess <- mkAuthSession
+
+    -- cheap startup routine
+    binanceStatus <- systemStatus sess
+    writeBChan chan $ StatusEvent binanceStatus
+    case binanceStatus of
+        Offline s -> logger chan "Binance is offline."
+        Maintenance s -> logger chan $ "Binance is down for maintenance." ++ show s
+        Online -> do
+                    logger chan "Binance is online."
+                    binanceExchangeInfo <- exchangeInfo sess
+
+                    case binanceExchangeInfo of
+                        Success (Exchangeinfo a b c s) -> logger chan $ "Found " ++ show (length s) ++ " symbols"
+                        Failure b -> logger chan "Unable to get binance exchange info"
+
+                    return ()
+
     -- setUncaughtExceptionHandler ""
-    void $ forkIO $ forever $ tickerJob chan 10000000
-    void $ forkIO $ forever $ statusJob chan 1000000
+    void $ forkIO $ forever $ tickerJob sess chan 10000000
+    void $ forkIO $ forever $ statusJob sess chan 1000000
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
-tickerJob :: BChan AppEvents -> Int -> IO ()
-tickerJob chan delay = do
-    prices <- ticker
+tickerJob :: Session -> BChan AppEvents -> Int -> IO ()
+tickerJob sess chan delay = do
+    prices <- ticker sess
 
     case prices of
         Success (p,w) -> do
             writeBChan chan $ TickerEvent $ filter match p
             writeBChan chan $ WeightEvent w
-        Failure s  -> logger chan "Error fetching ticker prices."
+        Failure s  -> logger chan $ "Error fetching ticker prices: " ++ show s
 
     threadDelay delay
     where
         symbols = ["BTCAUD", "ETHAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
-        match p = tickerresponseSymbol p `elem` symbols
+        match p = tickerSymbol p `elem` symbols
 
-statusJob :: BChan AppEvents -> Int -> IO ()
-statusJob chan delay = do
-    binanceStatus <- systemStatus
-
+statusJob :: Session -> BChan AppEvents -> Int -> IO ()
+statusJob sess chan delay = do
+    binanceStatus <- systemStatus sess
     writeBChan chan $ StatusEvent binanceStatus
 
     case binanceStatus of
-                Offline s -> logger chan "Binance is offline."
-                Maintenance s -> logger chan "Binance is down for maintenance."
-                Online -> pure ()
+            Offline s -> logger chan "Binance is offline."
+            Maintenance s -> logger chan $ "Binance is down for maintenance." ++ show s
+            Online -> pure ()
 
     threadDelay delay
 

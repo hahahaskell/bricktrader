@@ -10,8 +10,8 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as LBS
 
 import Network.Wreq
-import qualified Network.HTTP.Client as N
 import Network.HTTP.Types.Header
+import qualified Network.HTTP.Client as N
 import qualified Network.Wreq.Session as S
 
 import Control.Lens ( (^.), (^?) )
@@ -58,6 +58,9 @@ data BinanceFailureResult =
 
 mkSession :: IO S.Session
 mkSession = S.newAPISession
+
+mkAuthSession :: String -> String -> IO S.Session
+mkAuthSession apikey p = S.newAPISession
 
 getHeader :: Response body -> HeaderName -> String
 getHeader res name = BSC.unpack $ res ^. responseHeader name
@@ -107,18 +110,18 @@ price symbol = do
 --     "symbol": "LTCBTC",
 --     "price": "0.00637700"
 -- }]
-data PriceResponse = PriceResponse
-    { priceResponseSymbol :: Text
-    , priceResponsePrice  :: Text
+data Price = Price
+    { priceSymbol :: Text
+    , pricePrice  :: Text
     }
     deriving Show
 
-instance FromJSON PriceResponse where
+instance FromJSON Price where
     parseJSON = withObject "PriceResponse" $ \o ->
-            PriceResponse <$> o .: "symbol"
-                          <*> o .: "price"
+            Price <$> o .: "symbol"
+                  <*> o .: "price"
 
-prices :: IO (BinanceResult ([PriceResponse], WeightCount) BinanceFailureResult)
+prices :: IO (BinanceResult ([Price], WeightCount) BinanceFailureResult)
 prices = do
     res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
     return $ case res of
@@ -151,36 +154,36 @@ prices = do
 --         "count": 16628
 --     }]
 
-data TickerResponse = TickerResponse
-    { tickerresponseSymbol             :: Text
-    , tickerresponsePriceChange        :: Text
-    , tickerresponsePriceChangePercent :: Text
-    , tickerresponseWeightedAvgPrice   :: Text
-    , tickerresponsePrevClosePrice     :: Text
-    , tickerresponseLastPrice          :: Text
-    , tickerresponseLastQty            :: Text
-    , tickerresponseBidPrice           :: Text
-    , tickerresponseBidQty             :: Text
-    , tickerresponseAskPrice           :: Text
-    , tickerresponseAskQty             :: Text
-    , tickerresponseOpenPrice          :: Text
-    , tickerresponseHighPrice          :: Text
-    , tickerresponseLowPrice           :: Text
-    , tickerresponseVolume             :: Text
-    , tickerresponseQuoteVolume        :: Text
-    , tickerresponseOpenTime           :: Int
-    , tickerresponseCloseTime          :: Int
-    , tickerresponseFirstId            :: Int
-    , tickerresponseLastId             :: Int
-    , tickerresponseCount              :: Int }
+data Ticker = Ticker
+    { tickerSymbol             :: Text
+    , tickerPriceChange        :: Text
+    , tickerPriceChangePercent :: Text
+    , tickerWeightedAvgPrice   :: Text
+    , tickerPrevClosePrice     :: Text
+    , tickerLastPrice          :: Text
+    , tickerLastQty            :: Text
+    , tickerBidPrice           :: Text
+    , tickerBidQty             :: Text
+    , tickerAskPrice           :: Text
+    , tickerAskQty             :: Text
+    , tickerOpenPrice          :: Text
+    , tickerHighPrice          :: Text
+    , tickerLowPrice           :: Text
+    , tickerVolume             :: Text
+    , tickerQuoteVolume        :: Text
+    , tickerOpenTime           :: Int
+    , tickerCloseTime          :: Int
+    , tickerFirstId            :: Int
+    , tickerLastId             :: Int
+    , tickerCount              :: Int }
     deriving (Generic, Show)
 
-instance FromJSON TickerResponse where
+instance FromJSON Ticker where
     parseJSON = genericParseJSON $ aesonPrefix camelCase
 
-ticker :: IO (BinanceResult ([TickerResponse], WeightCount) BinanceFailureResult)
-ticker = do
-    res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+ticker :: S.Session -> IO (BinanceResult ([Ticker], WeightCount) BinanceFailureResult)
+ticker sess = do
+    res <- (Ok <$> (asJSON =<< S.get sess priceUrl)) `E.catch` httpHandle
 
     return $ case res of
         Ok r -> Success (r ^. responseBody, getWeightCountHeader r)
@@ -194,17 +197,67 @@ data SystemStatusResponse =
     | Offline String
     deriving (Show)
 
-systemStatus :: IO SystemStatusResponse
-systemStatus = do
-    res <- (Ok <$> get statusUrl) `E.catch` httpHandle
+systemStatus :: S.Session -> IO SystemStatusResponse
+systemStatus sess = do
+    res <- (Ok <$> S.get sess statusUrl) `E.catch` httpHandle
 
     return $ case res of
         Ok r -> case r ^. (responseBody . key "msg" . _String) of
             "normal" -> Online
             m        -> Maintenance $ T.unpack m
         s -> Offline $ show s
-        -- s -> Offline (s ^. responseHeader )
     where
         -- SAPI preceeds WAPI
           statusUrl = "https://api.binance.com/sapi/v1/system/status"
+
+data Symbol = Symbol
+    {   symbolSymbol :: Text
+    ,   symbolStatus :: Text
+    ,   symbolBaseAsset :: Text
+    ,   symbolBaseAssetPrecision :: Int
+    ,   symbolQuoteAsset :: Text
+    ,   symbolBaseCommissionPrecision :: Int
+    ,   symbolQuoteCommissionPrecision :: Int
+    ,   symbolOrderTypes :: [Text]
+    ,   symbolIcebergAllowed :: Bool
+    ,   symbolOcoAllowed :: Bool
+    ,   symbolQuoteOrderQtyMarketAllowed :: Bool
+    ,   symbolIsSpotTradingAllowed :: Bool
+    ,   symbolIsMarginTradingAllowed :: Bool
+    ,   symbolPermissions :: [Text]
+    } deriving (Generic, Show)
+
+instance FromJSON Symbol where
+    parseJSON = genericParseJSON $ aesonPrefix camelCase
+
+data Ratelimits = Ratelimits
+    {   ratelimitsRateLimitType :: Text
+    ,   ratelimitsInterval :: Text
+    ,   ratelimitsIntervalNum :: Int
+    ,   ratelimitsLimit :: Int
+    } deriving (Generic, Show)
+
+instance FromJSON Ratelimits where
+    parseJSON = genericParseJSON $ aesonPrefix camelCase
+
+data Exchangeinfo = Exchangeinfo
+    {   exchangeinfoTimezone :: Text
+    ,   exchangeinfoServerTime :: Integer
+    ,   exchangeinfoRateLimits :: [Ratelimits]
+    ,   exchangeinfoSymbols :: [Symbol]
+    } deriving (Generic, Show)
+
+instance FromJSON Exchangeinfo where
+    parseJSON = genericParseJSON $ aesonPrefix camelCase
+
+exchangeInfo :: S.Session -> IO (BinanceResult Exchangeinfo BinanceFailureResult)
+exchangeInfo sess = do
+    res <- (Ok <$> (asJSON =<< S.get sess exchangeInfoUrl)) `E.catch` httpHandle
+
+    return $ case res of
+        Ok r -> Success (r ^. responseBody)
+        f -> Failure $ mkFailureResult f
+    where
+        exchangeInfoUrl = "https://api.binance.com/api/v3/exchangeInfo"
+
 
