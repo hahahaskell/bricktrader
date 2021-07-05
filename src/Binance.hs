@@ -56,31 +56,28 @@ data BinanceFailureResult =
         | Retry String
     deriving (Show)
 
-mkSession :: IO S.Session
-mkSession = S.newAPISession
-
 getHeader :: Response body -> HeaderName -> String
 getHeader res name = BSC.unpack $ res ^. responseHeader name
 
 getWeightCountHeader :: Response body -> WeightCount
 getWeightCountHeader res = WeightCount . read $ getHeader res "x-mbx-used-weight-1m"
 
-httpHandle :: N.HttpException -> IO (BinanceHttpResponse a)
-httpHandle (N.HttpExceptionRequest _ (N.StatusCodeException res _)) =
-    return $ case res ^. responseStatus . statusMessage of
-        "FORBIDDEN"         -> SecurityViolation -- 403
-        "TOO MANY REQUESTS" -> BackOff $ getRetryAfter res -- 429
-        "I'M A TEAPOT"      -> IpBan $ getRetryAfter res -- 418
-        s                   -> Fault $ BSC.unpack s
-  where
-    getRetryAfter :: Response () -> Int
-    -- getRetryAfter res = fromMaybe 0 (readMaybe (getHeader res "Retry-After") :: Maybe Int)
-    getRetryAfter res = read $ getHeader res "Retry-After" :: Int
-httpHandle e = return . ConnectionFailed $ show e
+-- httpHandle :: N.HttpException -> IO (BinanceHttpResponse a)
+-- httpHandle (N.HttpExceptionRequest _ (N.StatusCodeException res _)) =
+--     return $ case res ^. responseStatus . statusMessage of
+--         "FORBIDDEN"         -> SecurityViolation -- 403
+--         "TOO MANY REQUESTS" -> BackOff $ getRetryAfter res -- 429
+--         "I'M A TEAPOT"      -> IpBan $ getRetryAfter res -- 418
+--         s                   -> Fault $ BSC.unpack s
+--   where
+--     getRetryAfter :: Response () -> Int
+--     -- getRetryAfter res = fromMaybe 0 (readMaybe (getHeader res "Retry-After") :: Maybe Int)
+--     getRetryAfter res = read $ getHeader res "Retry-After" :: Int
+-- httpHandle e = return . ConnectionFailed $ show e
 
 mkFailureResult :: BinanceHttpResponse a -> BinanceFailureResult
 mkFailureResult SecurityViolation = Halt "Binance's WAF has rejected the request."
-mkFailureResult (IpBan s) = Halt $ "IP banned for " <> show s
+mkFailureResult (IpBan s) = Halt $ "IP banned"
 mkFailureResult (Fault s) = Halt s
 mkFailureResult (BackOff s) = Sleep s
 mkFailureResult (ConnectionFailed s) = Retry s
@@ -91,7 +88,8 @@ mkFailureResult (ConnectionFailed s) = Retry s
 -- }
 price :: String -> IO (BinanceResult (Text, WeightCount) BinanceFailureResult)
 price symbol = do
-    res <- (Ok <$> get priceUrl) `E.catch` httpHandle
+    -- res <- (Ok <$> get priceUrl) `E.catch` httpHandle
+    res <- (Ok <$> get priceUrl)
 
     return $ case res of
             Ok r -> Success (r ^. (responseBody  . key "price" . _String), getWeightCountHeader r)
@@ -120,7 +118,8 @@ instance FromJSON PriceResponse where
 
 prices :: IO (BinanceResult ([PriceResponse], WeightCount) BinanceFailureResult)
 prices = do
-    res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+    -- res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+    res <- (Ok <$> (asJSON =<< get priceUrl))
     return $ case res of
             Ok r -> Success (r ^. responseBody, getWeightCountHeader r)
             f -> Failure $ mkFailureResult f
@@ -180,7 +179,8 @@ instance FromJSON TickerResponse where
 
 ticker :: IO (BinanceResult ([TickerResponse], WeightCount) BinanceFailureResult)
 ticker = do
-    res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
+    res <- (Ok <$> (asJSON =<< get priceUrl))
+    -- res <- (Ok <$> (asJSON =<< get priceUrl)) `E.catch` httpHandle
 
     return $ case res of
         Ok r -> Success (r ^. responseBody, getWeightCountHeader r)
@@ -196,7 +196,8 @@ data SystemStatusResponse =
 
 systemStatus :: IO SystemStatusResponse
 systemStatus = do
-    res <- (Ok <$> get statusUrl) `E.catch` httpHandle
+    -- res <- (Ok <$> get statusUrl) `E.catch` httpHandle
+    res <- (Ok <$> get statusUrl)
 
     return $ case res of
         Ok r -> case r ^. (responseBody . key "msg" . _String) of

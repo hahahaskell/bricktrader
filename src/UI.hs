@@ -96,9 +96,9 @@ handleTickerEvent pr = "| " ++ foldMap format pr
         arrow p = if p < 0 then '⯆' else '⯅'
 
 handleStatusEvent :: SystemStatusResponse -> String
-handleStatusEvent Online = "🟢"
-handleStatusEvent (Offline _) = "🔴"
-handleStatusEvent (Maintenance _) = "🚧"
+handleStatusEvent Online = "On"
+handleStatusEvent (Offline _) = "Off"
+handleStatusEvent (Maintenance _) = "Down"
 
 handleWeightEvent :: WeightCount -> String
 handleWeightEvent w = show w ++ "/1200"
