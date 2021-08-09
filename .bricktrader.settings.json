@@ -1,4 +1,5 @@
 {
     "apiKey": "",
-    "apiSecret": ""
+    "apiSecret": "",
+    "symbols":  ["BTCUSDT", "ETHUSDT", "BNBUSDT", "DASHUSDT", "ADAUSDT", "XRPUSDT"]
 }
