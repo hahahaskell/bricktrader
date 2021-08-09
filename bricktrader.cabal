@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 890cb48b3cc665947bcb957d595c66081358b943448d54ffd764121f77a6ba0d
+-- hash: dc4b0a957cf9af2921cbdd706f7e4356efb87dea5db7190b17d8dc2f5a1075be
 
 name:           bricktrader
 version:        0.1.0.0
@@ -25,20 +25,27 @@ source-repository head
 library
   exposed-modules:
       Binance
+      BinanceSession
+      BookKeeper
+      BookMaker
       Lib
+      ReflexiveSystem
       UI
   other-modules:
       Paths_bricktrader
   hs-source-dirs:
       src
   build-depends:
-      aeson
+      SHA
+    , aeson
     , aeson-casing
     , base >=4.7 && <5
     , brick
     , bytestring
+    , clock
     , containers
     , http-client
+    , http-client-tls
     , http-types
     , lens
     , lens-aeson
@@ -58,14 +65,17 @@ executable bricktrader-exe
       app
   ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      SHA
+    , aeson
     , aeson-casing
     , base >=4.7 && <5
     , brick
     , bricktrader
     , bytestring
+    , clock
     , containers
     , http-client
+    , http-client-tls
     , http-types
     , lens
     , lens-aeson
@@ -86,14 +96,17 @@ test-suite bricktrader-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      SHA
+    , aeson
     , aeson-casing
     , base >=4.7 && <5
     , brick
     , bricktrader
     , bytestring
+    , clock
     , containers
     , http-client
+    , http-client-tls
     , http-types
     , lens
     , lens-aeson

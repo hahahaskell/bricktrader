@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module UI (runTui) where
+module UI (runTui, AppEvents) where
 
 import Brick
 import Brick.BChan (newBChan, writeBChan, BChan)
@@ -17,27 +17,31 @@ import qualified Data.Text.Internal as T
 import qualified Data.Text as T
 
 import Control.Monad (void, forever)
-import Control.Concurrent (threadDelay, forkIO)
+import Control.Concurrent ( threadDelay, forkIO, takeMVar )
+import Control.Concurrent.MVar (putMVar)
 
-import Text.Printf
+import Text.Printf ( printf )
 import Data.Text (Text, unpack, pack)
 import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
 
 import Binance
-import Network.Wreq.Session (Session)
-import Lib (BrickTraderConfig(BrickTraderConfig))
+import BinanceSession
+import Lib (BrickTraderConfig(BrickTraderConfig, symbols, apiKey, apiSecret))
+import BookKeeper (recordBookerPrice)
 
 data AppState = AppState
     { loggerContents :: [Text]
     , tickerContent :: String
     , binanceStatusContent :: String
     , weightCountContent :: String
+    , binanceLoggerContents :: [Text]
     }
 data AppName = Main
 
 data AppEvents =
      LogEvent Text
-     | StatusEvent SystemStatusResponse
+     | BinanceLogEvent Text -- todo improve, too cheapp
+     | StatusEvent SystemStatus
      | TickerEvent [Ticker]
      | WeightEvent WeightCount
 
@@ -47,40 +51,44 @@ initialState =
              , tickerContent = ""
              , binanceStatusContent = "⏳"
              , weightCountContent = "0/1200"
+             , binanceLoggerContents = []
              }
 
 drawUI :: AppState -> [Widget ()]
 drawUI s = [a]
     where
         a =
-            hBox [str $ tickerContent s, padLeft Max $ str $ weightCountContent s ++ " " ++ binanceStatusContent s ++ "  " ]
+            hBox [str $ tickerContent s ]
             <=> B.hBorder
-            <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 1",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 2",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 3",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 4",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 5",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 6",
-                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Investment 7"
+            <=> hBox [ hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 1",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 2",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 3",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 4",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 5",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 6",
+                    hLimit 25 $ vLimit 5 $  withBorderStyle BS.unicodeRounded $ B.border $ C.center $ str "Position 7"
                     ]
-            <=> hBox [ withBorderStyle BS.unicode $ B.border (renderBottomUp (txtWrap <$> loggerContents s)),
-                    hLimitPercent 40 (vBox [ withBorderStyle BS.unicodeRounded $ B.border (C.center $ str "current assets"),
-                                withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "pending buy orders"),
-                                withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "pending sell orders")
-                                ])
+            <=> hBox  [ withBorderStyle BS.unicode $ B.border (renderBottomUp (txtWrap <$> loggerContents s))
+                      , hLimitPercent 35 (vBox [ withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "current assets"),
+                                                 withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "pending buy orders"),
+                                                 withBorderStyle BS.unicodeRounded
+                                                  $ B.border $ vBox [ str ("Binance: " ++ binanceStatusContent s) <+> padLeft Max (str $ weightCountContent s)
+                                                                    , B.hBorder
+                                                                    , renderBottomUp (txtWrap <$> binanceLoggerContents s)
+                                                                    ]
+                                                ])
                     ]
-            <=> withAttr "statusLine" (padRight Max $ str "[P] Purchase Order [S] Sell Order [Q] Quit [H] Help")
+            <=> withAttr "statusLine" (padRight Max $ str "[O] Order [Q] Quit [H] Help")
 
 theMap :: AttrMap
 theMap = attrMap V.defAttr
     [
-        ("statusLine", V.white `on` V.blue),
-        ("online", fg V.green),
-        ("offline", fg V.red)
+        ("statusLine", V.white `on` V.blue)
     ]
 
 handleEvent :: AppState -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppState)
 handleEvent s (AppEvent (LogEvent l)) = continue $ s { loggerContents = l : loggerContents s }
+handleEvent s (AppEvent (BinanceLogEvent l)) = continue $ s { binanceLoggerContents = l : binanceLoggerContents s }
 handleEvent s (AppEvent (TickerEvent p)) = continue $ s { tickerContent = handleTickerEvent p }
 handleEvent s (AppEvent (StatusEvent t)) = continue $ s { binanceStatusContent = handleStatusEvent t }
 handleEvent s (AppEvent (WeightEvent w)) = continue $ s { weightCountContent = handleWeightEvent w }
@@ -97,7 +105,7 @@ handleTickerEvent pr = "| " ++ foldMap format pr
         lastPrice t =  read $ unpack (tickerLastPrice t) :: Double
         arrow p = if p < 0 then '⯆' else '⯅'
 
-handleStatusEvent :: SystemStatusResponse -> String
+handleStatusEvent :: SystemStatus -> String
 handleStatusEvent Online = "🟢"
 handleStatusEvent (Offline _) = "🔴"
 handleStatusEvent (Maintenance _) = "🚧"
@@ -119,57 +127,71 @@ runTui config = do
     vty <- V.mkVty cfg
     chan <- newBChan 10
 
-    sess <- mkSession
-    -- authsess <- mkAuthSession
-
-    -- cheap startup routine
-    binanceStatus <- systemStatus sess
-    writeBChan chan $ StatusEvent binanceStatus
-    case binanceStatus of
-        Offline s -> logger chan "Binance is offline."
-        Maintenance s -> logger chan $ "Binance is down for maintenance." ++ show s
-        Online -> do
-                    logger chan "Binance is online."
-                    binanceExchangeInfo <- exchangeInfo sess
-
-                    case binanceExchangeInfo of
-                        Success (Exchangeinfo a b c s) -> logger chan $ "Found " ++ show (length s) ++ " symbols"
-                        Failure b -> logger chan "Unable to get binance exchange info"
-
-                    return ()
+    bSess@(BinanceSessionState m) <- newBinanceSession (apiSecret config) (apiKey config)
+    _ <- healthCheck bSess -- connect
 
     -- setUncaughtExceptionHandler ""
-    void $ forkIO $ forever $ tickerJob sess chan 10000000
-    void $ forkIO $ forever $ statusJob sess chan 1000000
+    void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)
+    void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (10 * 1000000)
+    void $ forkIO $ forever $ bookKeeperJob bSess chan (5 * 1000000)
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
-tickerJob :: Session -> BChan AppEvents -> Int -> IO ()
-tickerJob sess chan delay = do
-    prices <- ticker sess
+bookKeeperJob :: BinanceSessionState  -> BChan AppEvents -> Int -> IO ()
+bookKeeperJob bSess@(BinanceSessionState m) chan delay = do
+    r <- recordBookerPrice bSess
+    now <- getZonedTime
 
-    case prices of
-        Success (p,w) -> do
-            writeBChan chan $ TickerEvent $ filter match p
-            writeBChan chan $ WeightEvent w
-        Failure s  -> logger chan $ "Error fetching ticker prices: " ++ show s
+    case r of
+      Left (book, weight) -> do
+           writeBChan chan $ WeightEvent weight
+           writeBChan chan $ BinanceLogEvent $ pack $ logDateTime now ++ "Got book keeper prices."
+           pure ()
+      Right s -> logger chan $  "Failed to get books: " ++ s
 
     threadDelay delay
     where
-        symbols = ["BTCAUD", "ETHAUD", "BNBAUD", "DOGEAUD", "ADAAUD"]
-        match p = tickerSymbol p `elem` symbols
+        logDateTime = formatTime defaultTimeLocale "%b %e %T > "
 
-statusJob :: Session -> BChan AppEvents -> Int -> IO ()
-statusJob sess chan delay = do
-    binanceStatus <- systemStatus sess
+-- This job monitors the gateway endpoint for system outages, maintenance or high latency
+healthCheckJob :: BinanceSessionState -> BChan AppEvents -> Int -> IO ()
+healthCheckJob bSess@(BinanceSessionState m) chan delay = do
+    state <- takeMVar m
+    putMVar m state
+    let prevStatus = status state
+
+    (binanceStatus, latency) <- healthCheck bSess
     writeBChan chan $ StatusEvent binanceStatus
 
     case binanceStatus of
             Offline s -> logger chan "Binance is offline."
             Maintenance s -> logger chan $ "Binance is down for maintenance." ++ show s
-            Online -> pure ()
+            Online -> case prevStatus of
+                Offline _ -> logger chan "Binance is online."
+                Maintenance _ -> logger chan "Resumed after maintenance."
+                Online -> pure ()
 
     threadDelay delay
+
+tickerJob :: BinanceSessionState -> BChan AppEvents -> [Text] -> Int -> IO ()
+tickerJob (BinanceSessionState m) chan symbols delay = do
+    state <- takeMVar m
+    putMVar m state
+
+    if status state == Online then do
+        prices <- ticker $ session state
+
+        case prices of
+            Success (p,w) -> do
+                writeBChan chan $ TickerEvent $ filter match p
+                writeBChan chan $ WeightEvent w
+            Failure s  -> logger chan $ "Error fetching ticker prices: " ++ show s
+    else
+        pure ()
+
+    threadDelay delay
+    where
+        match p = tickerSymbol p `elem` symbols
 
 logger :: BChan AppEvents -> String -> IO ()
 logger c m = do

@@ -23,6 +23,9 @@ dependencies:
 - lens-aeson
 - aeson-casing
 - unix
+- http-client-tls
+- SHA
+- clock
 
 library:
   source-dirs: src
