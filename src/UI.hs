@@ -132,14 +132,14 @@ runTui config = do
 
     -- setUncaughtExceptionHandler ""
     void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)
-    void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (10 * 1000000)
-    void $ forkIO $ forever $ bookKeeperJob bSess chan (5 * 1000000)
+    void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (60 * 1000000)
+    void $ forkIO $ forever $ bookKeeperJob bSess chan (symbols config) (5 * 1000000)
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
-bookKeeperJob :: BinanceSessionState  -> BChan AppEvents -> Int -> IO ()
-bookKeeperJob bSess@(BinanceSessionState m) chan delay = do
-    r <- recordBookerPrice bSess
+bookKeeperJob :: BinanceSessionState  -> BChan AppEvents -> [Text] -> Int -> IO ()
+bookKeeperJob bSess@(BinanceSessionState m) chan symbols delay = do
+    r <- recordBookerPrice bSess symbols
     now <- getZonedTime
 
     case r of

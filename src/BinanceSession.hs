@@ -51,9 +51,6 @@ healthCheck (BinanceSessionState m) = do
 defaultRetryAttempts :: Int
 defaultRetryAttempts = 3
 
-defaultRetryDelay :: Second
-defaultRetryDelay = 1
-
 binanceRequest
     :: BinanceSessionState
     -> (Session -> IO (BinanceResult a BinanceFailureResult))
@@ -73,7 +70,8 @@ failSafeRequest
     -> RetryAttempt
     -> FailureMessage
     -> IO (Either a FailureMessage)
-failSafeRequest session request attempts message = if attempts > 0
+failSafeRequest session request attempts message =
+    if attempts > 0
     then try
     else return $ Right $ message ++ "Retry attempts exceeded."
   where
@@ -81,18 +79,13 @@ failSafeRequest session request attempts message = if attempts > 0
         result <- request session
 
         case result of
-            Success a              -> return $ Left a
-            Failure (Halt failure) -> return $ Right failure
+            Success a               -> return $ Left a
+            Failure (Halt failure)  -> return $ Right failure
             Failure (Sleep seconds) ->
+                -- should probably take the mvar
+                threadDelay (seconds * 1000000) >>
                 failSafeRequest session request (attempts - 1)
-                    $  "Sleept for "
-                    ++ show seconds
-                    ++ ".\n"
-                    ++ message
+                    ("Sleept for " ++ show seconds ++ ".\n" ++ message)
             Failure (Retry reason) ->
                 failSafeRequest session request (attempts - 1)
-                    $  reason
-                    ++ message
-
--- fix me
--- Sleep seconds -> threadDelay defaultRetryDelay * 1000000 >> failSafeRequest session (attempts -1) $ "Sleept for " ++ show seconds
+                    $  reason ++ message
