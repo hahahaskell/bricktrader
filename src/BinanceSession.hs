@@ -23,13 +23,13 @@ newtype BinanceSessionState = BinanceSessionState (MVar SessionState)
 newBinanceSession :: String -> String -> IO BinanceSessionState
 newBinanceSession secret key = do
     bSession <- mkSession
-    s <- newMVar SessionState { session = bSession
+    m <- newMVar SessionState { session = bSession
                               , latency = -1
                               , status = Offline "Inactive"
                               , secret = secret
                               , key = key
                               }
-    return $ BinanceSessionState s
+    return $ BinanceSessionState m
 
 healthCheck :: BinanceSessionState -> IO (SystemStatus, Millisecond)
 healthCheck (BinanceSessionState m) = do

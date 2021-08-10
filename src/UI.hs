@@ -28,6 +28,7 @@ import Binance
 import BinanceSession
 import Lib (BrickTraderConfig(BrickTraderConfig, symbols, apiKey, apiSecret))
 import BookKeeper (recordBookerPrice)
+import BookMaker
 
 data AppState = AppState
     { loggerContents :: [Text]
@@ -129,16 +130,33 @@ runTui config = do
 
     bSess@(BinanceSessionState m) <- newBinanceSession (apiSecret config) (apiKey config)
     _ <- healthCheck bSess -- connect
+    oSess <- newBianceOrderState
 
     -- setUncaughtExceptionHandler ""
     void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)
     void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (60 * 1000000)
-    void $ forkIO $ forever $ bookKeeperJob bSess chan (symbols config) (5 * 1000000)
+    -- void $ forkIO $ forever $ bookKeeperJob bSess oSess chan (60 * 1000000)
+    void $ forkIO $ forever $ bookMakerJob bSess chan (symbols config) (5 * 1000000)
 
     void $ customMain vty (V.mkVty cfg) (Just chan) theApp initialState
 
-bookKeeperJob :: BinanceSessionState  -> BChan AppEvents -> [Text] -> Int -> IO ()
-bookKeeperJob bSess@(BinanceSessionState m) chan symbols delay = do
+bookKeeperJob :: BinanceSessionState  -> BinanceOrderState -> BChan AppEvents -> Int -> IO ()
+bookKeeperJob bSess@(BinanceSessionState m) oSess@(BinanceOrderState mos) chan delay = do
+    r <- binanceExchangeInfo bSess oSess
+
+    -- case r of
+    --   Left (book, weight) -> do
+    --        writeBChan chan $ WeightEvent weight
+    --        writeBChan chan $ BinanceLogEvent $ pack $ logDateTime now ++ "Got book keeper prices."
+    --        pure ()
+    --   Right s -> logger chan $  "Failed to get books: " ++ s
+
+    threadDelay delay
+    where
+        -- logDateTime = formatTime defaultTimeLocale "%b %e %T > "
+
+bookMakerJob :: BinanceSessionState  -> BChan AppEvents -> [Text] -> Int -> IO ()
+bookMakerJob bSess@(BinanceSessionState m) chan symbols delay = do
     r <- recordBookerPrice bSess symbols
     now <- getZonedTime
 
@@ -153,7 +171,7 @@ bookKeeperJob bSess@(BinanceSessionState m) chan symbols delay = do
     where
         logDateTime = formatTime defaultTimeLocale "%b %e %T > "
 
--- This job monitors the gateway endpoint for system outages, maintenance or high latency
+-- Monitors the gateway endpoint for system outages, maintenance or high latency
 healthCheckJob :: BinanceSessionState -> BChan AppEvents -> Int -> IO ()
 healthCheckJob bSess@(BinanceSessionState m) chan delay = do
     state <- takeMVar m
