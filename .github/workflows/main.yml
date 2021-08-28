@@ -16,11 +16,20 @@ jobs:
       - name: Build
         run: stack build --ghc-options -split-sections
         
+      - name: step 1
+        run: ll
+        
       - name: Strip
         run: strip .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.2.1.0/build/bricktrader-exe/bricktrader-exe
         
+      - name: step 2
+        run: ll
+        
       - name: Package
         run: upx .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.2.1.0/build/bricktrader-exe/bricktrader-exe
+        
+      - name: step 2
+        run: ll
       
       - uses: actions/upload-artifact@v2
         with:
