@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build
+        run: stack build --ghc-options -split-sections
+        
+      - name: Strip
+        run: strip .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.2.1.0/build/bricktrader-exe/bricktrader-exe
+        
+      - name: Package
+        run: upx .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.2.1.0/build/bricktrader-exe/bricktrader-exe
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: bricktrader
+          path: .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.2.1.0/build/bricktrader-exe/bricktrader-exe
