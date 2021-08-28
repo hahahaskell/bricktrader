@@ -1,3 +1,4 @@
 resolver: lts-17.13
 packages:
 - .
+apply-ghc-options: everything
