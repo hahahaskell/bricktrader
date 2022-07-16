@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: dc4b0a957cf9af2921cbdd706f7e4356efb87dea5db7190b17d8dc2f5a1075be
+-- hash: aba4241bd11bdb508ebd89d025a1a46f43b32660dbe6fda32d195ad5fcf6991d
 
 name:           bricktrader
 version:        0.1.0.0
@@ -13,10 +13,13 @@ homepage:       https://github.com/githubuser/bricktrader#readme
 bug-reports:    https://github.com/githubuser/bricktrader/issues
 author:         Tama Waddell
 maintainer:     Tama Waddell
-copyright:      2021 Tama Waddell
+copyright:      2022 Tama Waddell
 license:        AGPL-3
 license-file:   LICENSE
 build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
 
 source-repository head
   type: git
@@ -24,17 +27,27 @@ source-repository head
 
 library
   exposed-modules:
-      Binance
-      BinanceSession
-      BookKeeper
-      BookMaker
+      Client.Binance
+      Import
       Lib
-      ReflexiveSystem
-      UI
+      Run
+      Service.BookKeeper
+      Service.BookMaker
+      Service.Wallet
+      TUI
+      Types
+      Util
+      Worker.HealthMonitoring
   other-modules:
       Paths_bricktrader
   hs-source-dirs:
       src
+  default-extensions:
+      DeriveGeneric
+      OverloadedStrings
+      LambdaCase
+      DeriveAnyClass
+  ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints
   build-depends:
       SHA
     , aeson
@@ -49,6 +62,8 @@ library
     , http-types
     , lens
     , lens-aeson
+    , record-dot-preprocessor
+    , record-hasfield
     , text
     , time
     , unix
@@ -63,7 +78,12 @@ executable bricktrader-exe
       Paths_bricktrader
   hs-source-dirs:
       app
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  default-extensions:
+      DeriveGeneric
+      OverloadedStrings
+      LambdaCase
+      DeriveAnyClass
+  ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       SHA
     , aeson
@@ -79,6 +99,8 @@ executable bricktrader-exe
     , http-types
     , lens
     , lens-aeson
+    , record-dot-preprocessor
+    , record-hasfield
     , text
     , time
     , unix
@@ -94,7 +116,12 @@ test-suite bricktrader-test
       Paths_bricktrader
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  default-extensions:
+      DeriveGeneric
+      OverloadedStrings
+      LambdaCase
+      DeriveAnyClass
+  ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       SHA
     , aeson
@@ -110,6 +137,8 @@ test-suite bricktrader-test
     , http-types
     , lens
     , lens-aeson
+    , record-dot-preprocessor
+    , record-hasfield
     , text
     , time
     , unix

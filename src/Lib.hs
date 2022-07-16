@@ -9,6 +9,9 @@ import Data.Text
 type Second = Int
 type Millisecond = Integer
 
+appName :: String
+appName = "BrickTrader"
+
 data BrickTraderConfig = BrickTraderConfig
         { apiKey :: String
         , apiSecret :: String

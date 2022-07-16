@@ -3,8 +3,18 @@ version:             0.1.0.0
 github:              "githubuser/bricktrader"
 license:             AGPL-3
 author:              "Tama Waddell"
-copyright:           "2021 Tama Waddell"
+copyright:           "2022 Tama Waddell"
 description:         Please see the README on GitHub at <https://github.com/tamaw/bricktrader#readme>
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+default-extensions:
+- DeriveGeneric
+- OverloadedStrings
+- LambdaCase
+- DeriveAnyClass
 
 dependencies:
 - base >= 4.7 && < 5
@@ -24,8 +34,20 @@ dependencies:
 - aeson-casing
 - unix
 - http-client-tls
+- record-dot-preprocessor
+- record-hasfield
 - SHA
 - clock
+
+ghc-options:
+- -F -pgmF record-dot-preprocessor
+- -Wall
+- -Wcompat
+- -Widentities
+# - -Wincomplete-record-updates
+# - -Wincomplete-uni-patterns
+- -Wpartial-fields
+- -Wredundant-constraints
 
 library:
   source-dirs: src
@@ -35,7 +57,6 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-    - -Wall
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
