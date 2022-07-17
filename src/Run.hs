@@ -4,10 +4,13 @@ import Import
 import qualified Client.Binance as Binance
 import qualified Worker.HealthMonitoring as HealthMonitoring
 import Worker.HealthMonitoring
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, forkIO)
+import qualified Service.BinanceClientManager as ClientManager
+import Control.Monad (forever)
+import TUI (runTui)
 
-data App = App
-  { appBinance :: Binance.Client -- try not to require this
+data AppState = AppState
+  { appClient  :: ClientManager.Service
   }
 
 main :: IO ()
@@ -17,23 +20,32 @@ main = do
         , apiSecret = ""
         }
 
-  let healthOptions = HealthMonitoringOptions
-        { sleep = 10000
+  let clientManagerOptions = ClientManager.BinanceClientManagerOptions
+        {
+          sleep = 1000
         }
-  let healthHooks = HealthMonitoring.Hooks
+
+--   let healthOptions = HealthMonitoringOptions
+--         { sleep = 10000
+--         }
+  let hooks = ClientManager.Hooks
         { disconnected = \_ -> print "d/c"
         , connected = \() -> print "pong"
         }
 
   binance <- Binance.createClient binanceOptions
-  health <- HealthMonitoring.createWorker healthOptions binance healthHooks
+  clientManager <- ClientManager.createService clientManagerOptions binance hooks
+--   health <- HealthMonitoring.createWorker healthOptions binance healthHooks
 
-  health.run
+  void <- forkIO . forever $ clientManager.healthCheck
 
-  let app = App
-        { appBinance = binance
+--   health.run
+
+  let appState = AppState
+        { appClient = clientManager
         }
 
-  threadDelay maxBound
+  runTui appState
+  -- threadDelay maxBound
   return ()
 

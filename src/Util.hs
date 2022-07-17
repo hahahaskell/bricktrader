@@ -2,6 +2,10 @@ module Util where
 
 import Import
 import System.Clock
+import qualified Network.HTTP.Client as Http
+import qualified Network.HTTP.Types as Http
+import Control.Lens ((^.))
+import Network.Wreq (responseHeader)
 
 getWallTime :: TimeSpec -> TimeSpec -> Millisecond
 getWallTime start end = diffMsec
@@ -11,3 +15,6 @@ getWallTime start end = diffMsec
 
 millisecondToMicrosecond :: Int -> Int
 millisecondToMicrosecond milli = milli * 1000
+
+getHeader :: Http.Response body -> Http.HeaderName -> String
+getHeader res name = show $ res ^. responseHeader name

@@ -2,47 +2,43 @@
 module Client.Binance
     ( createClient
     , Client
-    , BinanceResult (Failure, Success)
-    , SystemStatus (Offline, Online, Maintenance)
-    , BinanceFailureResult (Halt, Sleep, Retry)
+    , BinanceResult (..)
+    , SystemStatus (..)
+    , BinanceHttpResponse (..)
+    , BinanceFailureResult (..)
     , Ticker
     , WeightCount
+    , PlaceOrderOptions
+    , Price
+    , Exchangeinfo
+    , Book
+    , Trade
+    , OpenOrders
+    , OrderLimit
+    , Account
+    , SystemTime
     )
     where
 
 import Import
+import Util
 import Network.Wreq
 import qualified Network.Wreq.Session as Wreq
 import qualified Network.HTTP.Client as Http
-import qualified Network.HTTP.Types as Http
 import Data.Aeson (FromJSON (parseJSON), (.:))
 import qualified Data.Aeson as Aeson
-import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import qualified Data.ByteString.Char8 as BS
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Aeson.Lens (key, _String)
 import Control.Lens ((^.), (&), (.~))
-import Control.Concurrent.MVar (MVar, takeMVar, putMVar, newMVar)
 import Control.Exception ( catch )
 import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import GHC.Generics (Generic)
 import Data.Time ( defaultTimeLocale, getCurrentTime, formatTime )
 import Data.Digest.Pure.SHA (hmacSha256)
-import Util ( getWallTime )
-import System.Clock (Clock(Monotonic), getTime)
-
-type Latency = Millisecond
-type Url = String
-type Body = ByteString
-type EpochTime = Integer
-type WeightCount = Int
-type ApiSecret = String
-type ApiKey = String
-type RetryAttempt = Int
-type FailureMessage = String
 
 data BinanceResult a b = Success a | Failure b deriving (Show)
 data BinanceFailureResult =
@@ -54,41 +50,34 @@ data BinanceFailureResult =
 data Client
     = Client
     { healthCheck :: IO SystemStatus
-    , systemTime :: IO (BinanceResult SystemTime BinanceFailureResult)
-    , price :: Unit -> IO (BinanceResult Price BinanceFailureResult)
-    , prices :: IO (BinanceResult [Price] BinanceFailureResult)
-    , exchangeInfo :: IO (BinanceResult Exchangeinfo BinanceFailureResult)
-    , ticker :: IO (BinanceResult [Ticker] BinanceFailureResult)
-    , bookTicker :: IO (BinanceResult [Book] BinanceFailureResult)
-    , order :: PlaceOrderOptions -> IO (BinanceResult Trade BinanceFailureResult)
-    , openOrders :: String -> IO (BinanceResult [OpenOrders] BinanceFailureResult)
-    , orderCount :: IO (BinanceResult [OrderLimit] BinanceFailureResult)
-    , account :: IO (BinanceResult Account BinanceFailureResult)
+    , systemTime :: IO (BinanceHttpResponse (Response SystemTime))
+    , price :: Unit -> IO (BinanceHttpResponse (Response Price))
+    , prices :: IO (BinanceHttpResponse (Response [Price]))
+    , exchangeInfo :: IO (BinanceHttpResponse (Response Exchangeinfo))
+    , ticker :: IO (BinanceHttpResponse (Response [Ticker]))
+    , bookTicker :: IO (BinanceHttpResponse (Response [Book]) )
+    , order :: PlaceOrderOptions -> IO (BinanceHttpResponse (Response Trade))
+    , openOrders :: String -> IO (BinanceHttpResponse (Response [OpenOrders]))
+    , orderCount :: IO (BinanceHttpResponse (Response [OrderLimit]))
+    , account :: IO (BinanceHttpResponse (Response Account))
     }
 
 createClient :: BinanceOptions -> IO Client
 createClient options = do
     wreqSession <- Wreq.newAPISession
-    m <- newMVar BinanceHealth
-            { latency = -1
-            , system = Offline "Inactive"
-            , time = -1
-            , weight = -1
-            }
-    let health = BinanceHealthState m
 
     return Client
-        { healthCheck = healthCheck_ health wreqSession
-        , systemTime = binanceRequest health wreqSession (systemTime_ health)
-        , price = binanceRequest health wreqSession . price_
-        , prices = binanceRequest health wreqSession prices_
-        , exchangeInfo = binanceRequest health wreqSession exchangeInfo_
-        , ticker = binanceRequest health wreqSession ticker_
-        , bookTicker = binanceRequest health wreqSession bookTicker_
-        , order = binanceRequest health wreqSession . order_ options.apiKey options.apiSecret
-        , openOrders = binanceRequest health wreqSession . openOrders_ options.apiKey options.apiSecret
-        , orderCount = binanceRequest health wreqSession $ orderCount_ options.apiKey options.apiSecret
-        , account = binanceRequest health wreqSession $ account_ options.apiKey options.apiSecret
+        { healthCheck = healthCheck_ wreqSession
+        , systemTime = systemTime_  wreqSession
+        , price = price_ wreqSession
+        , prices = prices_ wreqSession
+        , exchangeInfo = exchangeInfo_ wreqSession
+        , ticker = ticker_ wreqSession
+        , bookTicker = bookTicker_ wreqSession
+        , order = order_ wreqSession options.apiKey options.apiSecret
+        , openOrders = openOrders_ wreqSession options.apiKey options.apiSecret
+        , orderCount = orderCount_ wreqSession  options.apiKey options.apiSecret
+        , account = account_ wreqSession options.apiKey options.apiSecret
         }
 
 -- | Internal HTTP IO
@@ -105,13 +94,6 @@ instance HasBinance a where
     httpGetWith session opts url = (Ok <$> (asJSON =<< Wreq.getWith opts session url)) `catch` httpHandle
     httpPostWith session opts body url = (Ok <$> (asJSON =<< Wreq.postWith opts session url body)) `catch` httpHandle
 
-newtype BinanceHealthState = BinanceHealthState (MVar BinanceHealth)
-data BinanceHealth = BinanceHealth { latency :: Latency
-                                   , system :: SystemStatus
-                                   , time :: EpochTime
-                                   , weight :: WeightCount
-                                   } deriving (Show)
-
 data BinanceHttpResponse a =
      Ok a
      | SecurityViolation
@@ -120,41 +102,6 @@ data BinanceHttpResponse a =
      | Fault String
      | ConnectionFailed String
      deriving (Show)
-
-binanceRequest ::
-    BinanceHealthState
-    -> Wreq.Session
-    -> (Wreq.Session -> IO (BinanceHttpResponse (Response a)))
-    -> IO (BinanceResult a BinanceFailureResult)
-binanceRequest (BinanceHealthState m) session request = do
-    health <- takeMVar m
-    putMVar m health
-
-    if health.system == Online
-    then do
-        start <- getTime Monotonic
-        response <- request session
-        end <- getTime Monotonic
-
-        newState <- takeMVar m
-        putMVar m newState { latency = getWallTime start end }
-
-        case response of
-                Ok r -> do
-                    h <- takeMVar m
-                    putMVar m h { weight = getWeightCountHeader r }
-                    return $ Success (r ^. responseBody)
-                f -> return $ Failure $ mkFailure f
-    else do
-        return $ Failure $ Retry "Binance offline."
-    where
-        mkFailure :: BinanceHttpResponse a -> BinanceFailureResult
-        mkFailure SecurityViolation = Halt "Binance's WAF has rejected the request."
-        mkFailure (IpBan s) = Halt $ "IP banned for " <> show s
-        mkFailure (Fault s) = Halt s
-        mkFailure (BackOff s) = Sleep s
-        mkFailure (ConnectionFailed s) = Retry s
-        mkFailure _ = Halt "Unhandled failure"
 
 -- Anything other than a 2XX throws an Exception. Handles documented binance expected status codes
 httpHandle :: Http.HttpException -> IO (BinanceHttpResponse a)
@@ -169,16 +116,10 @@ httpHandle e = return . ConnectionFailed $ show e
 
 -- | Headers Utils
 
-getHeader :: Http.Response body -> Http.HeaderName -> String
-getHeader res name = show $ res ^. responseHeader name
-
 getRetryAfterHeader :: Http.Response () -> Int
 getRetryAfterHeader r  = fromMaybe defaultRetryAfter $ readMaybe $ getHeader r "Retry-After"
         where defaultRetryAfter = 10 -- TODO move this
 
-getWeightCountHeader :: Response body -> WeightCount
-getWeightCountHeader r = fromMaybe defaultWeightCount $ readMaybe $ getHeader r "x-mbx-used-weight-1m"
-        where defaultWeightCount = -1
 
 -- | API Data and http calls
 
@@ -188,16 +129,13 @@ data SystemStatus =
     | Offline Text
     deriving (Show, Eq)
 
-healthCheck_ :: BinanceHealthState -> Wreq.Session -> IO SystemStatus
-healthCheck_ (BinanceHealthState m) session = do
+healthCheck_ :: Wreq.Session -> IO SystemStatus
+healthCheck_ session = do
     response <- httpGetRaw session "https://api.binance.com/sapi/v1/system/status"
 
     case response of
             Ok r -> case r ^. (responseBody . key "msg" . _String) of
-                "normal" -> do
-                    health <- takeMVar m
-                    putMVar m health { system = Online }
-                    return Online
+                "normal" -> return Online
                 message  -> return $ Maintenance message
             f -> return $ Offline . Text.pack $ show f
 
@@ -209,17 +147,8 @@ instance FromJSON SystemTime where
     parseJSON = Aeson.withObject "TimeResponse" $ \o ->
                     SystemTime <$> o .: "serverTime"
 
-systemTime_ :: BinanceHealthState -> Wreq.Session -> IO (BinanceHttpResponse (Response SystemTime))
-systemTime_ (BinanceHealthState m) session  = do
-    response <- httpGet session "https://api.binance.com/api/v3/time"
-
-    case response of
-            Ok r -> do
-                    health <- takeMVar m
-                    putMVar m health { time = (r ^. responseBody).serverTime }
-            _ -> pure ()
-
-    return response
+systemTime_ :: Wreq.Session -> IO (BinanceHttpResponse (Response SystemTime))
+systemTime_ session  = httpGet session "https://api.binance.com/api/v3/time"
 
 data Price = Price
     { symbol :: Text
@@ -227,8 +156,8 @@ data Price = Price
     }
     deriving (Show, Generic, FromJSON)
 
-price_ :: String -> Wreq.Session -> IO (BinanceHttpResponse (Response Price))
-price_ symbol session = httpGet session $ "https://api.binance.com/api/v3/ticker/price" ++ "?symbol=" ++ symbol
+price_ :: Wreq.Session -> String -> IO (BinanceHttpResponse (Response Price))
+price_ session symbol  = httpGet session $ "https://api.binance.com/api/v3/ticker/price" ++ "?symbol=" ++ symbol
 
 prices_ :: Wreq.Session -> IO (BinanceHttpResponse (Response [Price]))
 prices_ session = httpGet session "https://api.binance.com/api/v3/ticker/price"
@@ -340,8 +269,8 @@ data PlaceOrderOptions = PlaceOrderOptions
     , recvWindow :: Int
     }
 
-order_ :: ApiKey -> ApiSecret -> PlaceOrderOptions -> Wreq.Session -> IO (BinanceHttpResponse (Response Trade))
-order_ apiKey apiSecret orderOptions session = do
+order_ :: Wreq.Session -> ApiKey -> ApiSecret -> PlaceOrderOptions -> IO (BinanceHttpResponse (Response Trade))
+order_ session key secret orderOptions = do
     now <- getCurrentTime
 
     let timestamp = formatTime defaultTimeLocale "%s%3q" now
@@ -353,8 +282,8 @@ order_ apiKey apiSecret orderOptions session = do
                         <> "&price=" <> show orderOptions.price
                         <> "&recvWindow=1000"
                         <> "&timestamp=" <> timestamp
-        signature = Text.pack $ show $ hmacSha256 (LBS.pack apiSecret) body
-        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack apiKey]
+        signature = Text.pack $ show $ hmacSha256 (LBS.pack secret) body
+        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack key]
                         & param "signature" .~ [signature]
 
     httpPostWith session opts (LBS.toStrict body) "https://api.binance.com/api/v3/order"
@@ -380,8 +309,8 @@ data OpenOrders = OpenOrders
     , origQuoteOrderQty :: String
     } deriving (Generic, Show, FromJSON)
 
-openOrders_ :: ApiKey -> ApiSecret  -> String -> Wreq.Session -> IO (BinanceHttpResponse (Response [OpenOrders]))
-openOrders_ apiKey apiSecret  symbol session = do
+openOrders_ :: Wreq.Session -> ApiKey -> ApiSecret  -> String -> IO (BinanceHttpResponse (Response [OpenOrders]))
+openOrders_ session key secret symbol = do
     now <- getCurrentTime
 
     let timestamp = formatTime defaultTimeLocale "%s%3q" now
@@ -389,8 +318,8 @@ openOrders_ apiKey apiSecret  symbol session = do
                                <> "&recvWindow=10000"
                                <> "&timestamp=" <> timestamp
 
-        signature = Text.pack $ show $ hmacSha256 (LBS.pack apiSecret) queryString
-        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack apiKey]
+        signature = Text.pack $ show $ hmacSha256 (LBS.pack secret) queryString
+        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack key]
                         & param "signature" .~ [signature]
 
     httpGetWith session opts ("https://api.binance.com/api/v3/openOrders" <> "?" <> LBS.unpack queryString)
@@ -403,15 +332,15 @@ data OrderLimit = OrderLimit
     , count :: Int
     } deriving (Generic, Show, FromJSON)
 
-orderCount_ :: ApiKey -> ApiSecret -> Wreq.Session -> IO (BinanceHttpResponse (Response [OrderLimit]))
-orderCount_ apiKey apiSecret session = do
+orderCount_ :: Wreq.Session -> ApiKey -> ApiSecret -> IO (BinanceHttpResponse (Response [OrderLimit]))
+orderCount_ session key secret = do
     now <- getCurrentTime
 
     let timestamp = formatTime defaultTimeLocale "%s%3q" now
         queryString = LBS.pack $ "recvWindow=10000"
                                <> "&timestamp=" <> timestamp
-        signature = Text.pack $ show $ hmacSha256 (LBS.pack apiSecret) queryString
-        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack apiKey]
+        signature = Text.pack $ show $ hmacSha256 (LBS.pack secret) queryString
+        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack key]
                         & param "signature" .~ [signature]
 
     httpGetWith session opts ("https://api.binance.com/api/v3/rateLimit/order" <> "?" <> LBS.unpack queryString)
@@ -436,15 +365,15 @@ data Account = Account
     , permissions :: [String]
     } deriving (Generic, Show, FromJSON)
 
-account_ :: ApiKey -> ApiSecret -> Wreq.Session -> IO (BinanceHttpResponse (Response Account))
-account_ apiKey apiSecret session = do
+account_ :: Wreq.Session -> ApiKey -> ApiSecret -> IO (BinanceHttpResponse (Response Account))
+account_ session key secret = do
     now <- getCurrentTime
 
     let timestamp = formatTime defaultTimeLocale "%s%3q" now
         queryString =  "recvWindow=10000"
                                <> "&timestamp=" <> timestamp
-        signature = Text.pack $ show $ hmacSha256 (LBS.pack apiSecret) (LBS.pack queryString)
-        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack apiKey]
+        signature = Text.pack $ show $ hmacSha256 (LBS.pack secret) (LBS.pack queryString)
+        opts = defaults & header "X-MBX-APIKEY" .~ [BS.pack key]
                         & param "signature" .~ [signature]
 
     httpGetWith session opts ("https://api.binance.com/api/v3/account" <> "?" <> queryString)
