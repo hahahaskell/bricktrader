@@ -1,6 +1,14 @@
 
-module TUI (runTui, AppEvents) where
+module TUI
+  ( AppContent (..),
+    AppEvents (..),
+    drawUI,
+    handleEvent,
+    theMap
+  )
+where
 
+import Types
 import Brick
 import Brick.BChan (newBChan, writeBChan, BChan)
 import qualified Graphics.Vty as V
@@ -8,10 +16,7 @@ import qualified Brick.Types as T
 import Control.Monad (void)
 import Data.Text (Text, pack)
 import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
-import Lib (Millisecond)
 import Client.Binance (SystemStatus (..), Ticker, WeightCount)
-
-data AppName = Main
 
 data AppContent = AppContent
     { loggerContents :: [Text]
@@ -110,45 +115,6 @@ handleWeightEvent w =  show w ++ "/1200"
 
 handleLatencyEvent :: Millisecond -> String
 handleLatencyEvent m = show m ++ "ms"
-
-runTui :: IO ()
-runTui = do
-    cfg <- V.standardIOConfig
-    vty <- V.mkVty cfg
-    chan <- newBChan 10
-
-    let tuiApp  = App
-          { appDraw         = drawUI
-          , appChooseCursor = neverShowCursor
-          , appHandleEvent  = handleEvent
-          , appAttrMap      = const theMap
-          , appStartEvent   = return
-          }
-
-    let appContent = AppContent
-          { loggerContents = ["Brick Trader"]
-          , tickerContent = ""
-          , systemStatusContent = ""
-          , latencyContent = "0ms"
-          , orderWeightContent = ""
-          , weightCountContent = ""
-          , weightLimitContent = ""
-          , timeDeltaContent = "+0.02s"
-          , symbolsCountContent = "0"
-          , symbolsContent = []
-          }
-
-    -- bSess@(BinanceSessionState m) <- newBinanceSession (Lib.apiSecret config) (Lib.apiKey config)
-    -- _ <- healthCheck bSess -- connect
-    -- oSess <- newBianceOrderState
-
-    -- setUncaughtExceptionHandler ""
-    -- void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)
-    -- void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (60 * 1000000)
-    -- void $ forkIO $ forever $ bookKeeperJob bSess oSess chan (60 * 1000000)
-    -- void $ forkIO $ forever $ bookMakerJob bSess chan (symbols config) (5 * 1000000)
-
-    void $ customMain vty (V.mkVty cfg) (Just chan) tuiApp appContent
 
 -- bookKeeperJob :: BinanceSessionState  -> BinanceOrderState -> BChan AppEvents -> Int -> IO ()
 -- bookKeeperJob bSess@(BinanceSessionState m) oSess@(BinanceOrderState mos) chan delay = do

@@ -19,6 +19,7 @@ type ApiKey = String
 type RetryAttempt = Int
 type FailureMessage = String
 
+
 oneSecond :: MicroSecond
 oneSecond = 1000000
 
@@ -27,4 +28,16 @@ data BinanceOptions = BinanceOptions
   , apiSecret :: String
   }
 
+-- may remove this
+-- data BrickTraderConfig = BrickTraderConfig
+--         { apiKey :: String
+--         , apiSecret :: String
+--         , symbols :: [Text]
+--         } deriving (Show, Generic)
+
+-- instance FromJSON BrickTraderConfig where
+--     parseJSON = withObject "Config" $ \c ->
+--             BrickTraderConfig <$> c .: "apiKey"
+--                               <*> c .: "apiSecret"
+--                               <*> c .: "symbols"
 

@@ -20,7 +20,7 @@ module Client.Binance
     )
     where
 
-import Import
+import Types
 import Util
 import Network.Wreq
 import qualified Network.Wreq.Session as Wreq

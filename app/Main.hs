@@ -1,10 +1,10 @@
 module Main where
 
-import qualified Run
+import qualified App
 
 main :: IO ()
 main = do
-  Run.main
+  App.appMain
   return ()
 
   -- user <- getUserEntryForName =<< getEffectiveUserName

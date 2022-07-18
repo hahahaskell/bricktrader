@@ -1,6 +1,6 @@
 module Util where
 
-import Import
+import Types
 import System.Clock
 import qualified Network.HTTP.Client as Http
 import qualified Network.HTTP.Types as Http

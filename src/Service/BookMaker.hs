@@ -1,6 +1,5 @@
 module Service.BookMaker where
 
-import Lib
 import Control.Concurrent (MVar, newMVar, takeMVar, putMVar)
 import Data.Time (formatTime, getCurrentTime, secondsToDiffTime, diffUTCTime)
 import Data.Time.Format (defaultTimeLocale)

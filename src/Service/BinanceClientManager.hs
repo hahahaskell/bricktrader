@@ -1,6 +1,6 @@
 module Service.BinanceClientManager where
 
-import Import
+import Types
 import Client.Binance
 import Data.Text (Text)
 import Control.Lens ((^.))
