@@ -10,10 +10,11 @@ where
 
 import Types
 import Brick
-import Brick.BChan (newBChan, writeBChan, BChan)
-import qualified Graphics.Vty as V
+import Brick.BChan (writeBChan, BChan)
+import qualified Brick.Widgets.Border.Style as BS
+import qualified Brick.Widgets.Border as B
 import qualified Brick.Types as T
-import Control.Monad (void)
+import qualified Graphics.Vty as V
 import Data.Text (Text, pack)
 import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
 import Client.Binance (SystemStatus (..), Ticker, WeightCount)
@@ -49,6 +50,8 @@ drawUI s = [a]
                                       , padLeftRight 1 (str "[") , str (systemStatusContent s) , padLeft (Pad 1) (str "]")
                                       ]
                  ]
+
+            <=> hBox [ withAttr "loggerAttr" $ withBorderStyle BS.unicodeRounded $ B.border (renderBottomUp (txtWrap <$> loggerContents s)) ]
             <=> withAttr "statusLine" (padRight Max $ str "[O] Order [Q] Quit [H] Help")
 
             -- <+> padLeftRight 1 (str "[") , str (healthCheckContent s) , padLeft (Pad 1) (str "]")
@@ -84,6 +87,7 @@ theMap :: AttrMap
 theMap = attrMap V.defAttr
     [ ("headerbarAttr", V.brightBlack `on` V.brightWhite)
     , ("statusbarAttr", V.white `on` V.blue)
+    , ("loggerAttr", V.white `on` V.black)
     ]
 
 handleEvent :: AppContent -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppContent)

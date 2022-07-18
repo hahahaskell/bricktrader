@@ -23,63 +23,64 @@ appName = "BrickTrader"
 
 appMain :: IO ()
 appMain = do
-  let binanceOptions = BinanceOptions
-        { apiKey = ""
-        , apiSecret = ""
+  cfg <- V.standardIOConfig
+  vty <- V.mkVty cfg
+  chan <- newBChan 5 -- chosen by dice throw haha
+
+  let app = App
+        { appDraw         = drawUI
+        , appChooseCursor = neverShowCursor
+        , appHandleEvent  = handleEvent
+        , appAttrMap      = const theMap
+        , appStartEvent   = return
         }
 
-  let clientManagerOptions = ClientManager.BinanceClientManagerOptions
-        {
-          sleep = 1000
+  let appContent = TUI.AppContent
+        { loggerContents = ["Brick Trader"]
+        , tickerContent = ""
+        , systemStatusContent = ""
+        , latencyContent = "0ms"
+        , orderWeightContent = ""
+        , weightCountContent = ""
+        , weightLimitContent = ""
+        , timeDeltaContent = "+0.02s"
+        , symbolsCountContent = "0"
+        , symbolsContent = []
         }
 
-  let hooks = ClientManager.Hooks
-        { disconnected = \_ -> print "d/c"
-        , connected = \() -> print "pong"
-        }
+  void . forkIO . forever $ do
+     writeBChan chan $ LogEvent "test"
+     threadDelay $ 5 * oneSecond
 
-  binance <- Binance.createClient binanceOptions
-  clientManager <- ClientManager.createService clientManagerOptions binance hooks
---   health <- HealthMonitoring.createWorker healthOptions binance healthHooks
+--   let binanceOptions = BinanceOptions
+--         { apiKey = ""
+--         , apiSecret = ""
+--         }
 
-  void <- forkIO . forever $ clientManager.healthCheck
+--   let clientManagerOptions = ClientManager.BinanceClientManagerOptions
+--         {
+--           sleep = 1000
+--         }
 
---   health.run
+--   let hooks = ClientManager.Hooks
+--         { disconnected = \_ -> print "d/c"
+--         , connected = \() -> print "pong"
+--         }
 
-  let appState = AppState
-        { appClient = clientManager
-        }
+--   binance <- Binance.createClient binanceOptions
+--   clientManager <- ClientManager.createService clientManagerOptions binance hooks
 
-  runTui appState
+--   void <- forkIO . forever $ clientManager.healthCheck
+
+-- --   health.run
+
+--   let appState = AppState
+--         { appClient = clientManager
+--         }
+
+  -- runTui appState
   -- threadDelay maxBound
-  return ()
-
-runTui :: AppState -> IO ()
-runTui state = do
-    cfg <- V.standardIOConfig
-    vty <- V.mkVty cfg
-    chan <- newBChan 10
-
-    let tuiApp  = App
-          { appDraw         = drawUI
-          , appChooseCursor = neverShowCursor
-          , appHandleEvent  = handleEvent
-          , appAttrMap      = const theMap
-          , appStartEvent   = return
-          }
-
-    let appContent = TUI.AppContent
-          { loggerContents = ["Brick Trader"]
-          , tickerContent = ""
-          , systemStatusContent = ""
-          , latencyContent = "0ms"
-          , orderWeightContent = ""
-          , weightCountContent = ""
-          , weightLimitContent = ""
-          , timeDeltaContent = "+0.02s"
-          , symbolsCountContent = "0"
-          , symbolsContent = []
-          }
+  void $ customMain vty (V.mkVty cfg) (Just chan) app appContent
 
     -- bSess@(BinanceSessionState m) <- newBinanceSession (Lib.apiSecret config) (Lib.apiKey config)
     -- _ <- healthCheck bSess -- connect
@@ -90,5 +91,3 @@ runTui state = do
     -- void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (60 * 1000000)
     -- void $ forkIO $ forever $ bookKeeperJob bSess oSess chan (60 * 1000000)
     -- void $ forkIO $ forever $ bookMakerJob bSess chan (symbols config) (5 * 1000000)
-
-    void $ customMain vty (V.mkVty cfg) (Just chan) tuiApp appContent
