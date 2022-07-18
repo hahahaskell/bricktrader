@@ -9,7 +9,7 @@ import qualified Client.Binance as Binance
 import qualified Worker.HealthMonitoring as HealthMonitoring
 import Worker.HealthMonitoring
 import Control.Concurrent (threadDelay, forkIO)
-import qualified Service.BinanceClientManager as ClientManager
+import qualified Service.ClientManager as ClientManager
 import Control.Monad (forever, void)
 import Data.Text (Text)
 import Client.Binance (SystemStatus, Ticker)
@@ -25,7 +25,7 @@ appMain :: IO ()
 appMain = do
   cfg <- V.standardIOConfig
   vty <- V.mkVty cfg
-  chan <- newBChan 5 -- chosen by dice throw haha
+  chan <- newBChan 5 -- chosen by dice throw haha, will block when exceeded
 
   let app = App
         { appDraw         = drawUI
@@ -48,43 +48,33 @@ appMain = do
         , symbolsContent = []
         }
 
-  void . forkIO . forever $ do
-     writeBChan chan $ LogEvent "test"
-     threadDelay $ 5 * oneSecond
+  let hooks = ClientManager.Hooks
+        { disconnected = \_ -> writeBChan chan $ LogEvent "d/c"
+        , connected = writeBChan chan $ LogEvent "online"
+        }
 
---   let binanceOptions = BinanceOptions
---         { apiKey = ""
---         , apiSecret = ""
---         }
+  let binanceOptions = BinanceOptions
+        { apiKey = ""
+        , apiSecret = ""
+        }
+  let clientManagerOptions = ClientManager.ClientManagerOptions
+        { sleep = 1000
+        }
 
---   let clientManagerOptions = ClientManager.BinanceClientManagerOptions
---         {
---           sleep = 1000
---         }
+  binance <- Binance.createClient binanceOptions
+  clientManager <- ClientManager.createService clientManagerOptions binance hooks
 
---   let hooks = ClientManager.Hooks
---         { disconnected = \_ -> print "d/c"
---         , connected = \() -> print "pong"
---         }
+  void $ forkIO $ forever $ do
+    _ <- clientManager.connect
+    threadDelay $ 5 * oneSecond
+    _ <- clientManager.disconnect
+    return ()
 
---   binance <- Binance.createClient binanceOptions
---   clientManager <- ClientManager.createService clientManagerOptions binance hooks
+  -- void . forkIO . forever $ do
+  --    writeBChan chan $ LogEvent "test"
+  --    threadDelay $ 5 * oneSecond
 
---   void <- forkIO . forever $ clientManager.healthCheck
-
--- --   health.run
-
---   let appState = AppState
---         { appClient = clientManager
---         }
-
-  -- runTui appState
-  -- threadDelay maxBound
   void $ customMain vty (V.mkVty cfg) (Just chan) app appContent
-
-    -- bSess@(BinanceSessionState m) <- newBinanceSession (Lib.apiSecret config) (Lib.apiKey config)
-    -- _ <- healthCheck bSess -- connect
-    -- oSess <- newBianceOrderState
 
     -- setUncaughtExceptionHandler ""
     -- void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)

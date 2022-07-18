@@ -1,4 +1,4 @@
-module Service.BinanceClientManager where
+module Service.ClientManager where
 
 import Types
 import Client.Binance
@@ -12,13 +12,14 @@ import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import Network.Wreq.Lens (responseBody)
 
-data BinanceClientManagerOptions = BinanceClientManagerOptions
+data ClientManagerOptions = ClientManagerOptions
     { sleep :: Int
     }
 
 -- TODO hide healthchekc and systemtime?
 data Service = Service
-    { healthCheck :: IO SystemStatus
+    { connect :: IO SystemStatus
+    , disconnect :: IO SystemStatus
     , systemTime :: IO (BinanceResult SystemTime BinanceFailureResult)
     , price :: Unit -> IO (BinanceResult Price BinanceFailureResult)
     , prices :: IO (BinanceResult [Price] BinanceFailureResult)
@@ -32,12 +33,12 @@ data Service = Service
     }
 
 data Hooks = Hooks
-  { connected :: () -> IO ()
+  { connected :: IO ()
   , disconnected :: Text -> IO ()
   -- , latency :: Latency -> IO
   }
 
-createService :: BinanceClientManagerOptions -> Client -> Hooks -> IO Service
+createService :: ClientManagerOptions -> Client -> Hooks -> IO Service
 createService options binance hooks = do
 
   m <- newMVar BinanceHealth
@@ -48,9 +49,9 @@ createService options binance hooks = do
         }
   let health = BinanceHealthState m
 
- -- todo go online, disconnect functions??
   return Service
-      { healthCheck = healthCheck_ health binance
+      { connect = healthCheck_ health hooks binance
+      , disconnect = disconnect_ health hooks
       , systemTime = systemTime_ health binance
       , price = binanceRequest health . binance.price
       , prices = binanceRequest health binance.prices
@@ -108,14 +109,33 @@ mkFailure (BackOff s) = Sleep s
 mkFailure (ConnectionFailed s) = Retry s
 mkFailure _ = Halt "Unhandled failure"
 
-healthCheck_ :: BinanceHealthState -> Client -> IO SystemStatus
-healthCheck_ (BinanceHealthState m) client = do
+healthCheck_ :: BinanceHealthState -> Hooks -> Client -> IO SystemStatus
+healthCheck_ (BinanceHealthState m) hooks client = do
     status <- client.healthCheck
 
     health <- takeMVar m
     putMVar m health { system = status }
+    sendHook (health.system, status)
 
     return status
+    where
+      sendHook (Online, Online) = pure()
+      sendHook (_, Online) = hooks.connected
+      sendHook (Online, Maintenance txt) = hooks.disconnected $ "Binance is down for maintance: " <> txt
+      sendHook _ = hooks.disconnected "Binance is unreachable."
+
+disconnect_ :: BinanceHealthState -> Hooks -> IO SystemStatus
+disconnect_ (BinanceHealthState m) hooks = do
+  let status = Offline "User action"
+  health <- takeMVar m
+  putMVar m health { system = status }
+  sendHook (health.system, status)
+
+  return status
+
+  where
+    sendHook (Online, Offline txt) = hooks.disconnected txt
+    sendHook _ = pure ()
 
 systemTime_ :: BinanceHealthState -> Client -> IO (BinanceResult SystemTime BinanceFailureResult)
 systemTime_ (BinanceHealthState m) client  = do
