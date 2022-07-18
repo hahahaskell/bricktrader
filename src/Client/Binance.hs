@@ -10,7 +10,8 @@ module Client.Binance
     , WeightCount
     , PlaceOrderOptions
     , Price
-    , Exchangeinfo
+    , Exchangeinfo (..)
+    , Symbol (..)
     , Book
     , Trade
     , OpenOrders

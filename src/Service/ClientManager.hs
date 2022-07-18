@@ -1,4 +1,10 @@
-module Service.ClientManager where
+module Service.ClientManager
+  ( createService
+  , ClientManagerOptions (..)
+  , Hooks (..)
+  , Service (..)
+  )
+ where
 
 import Types
 import Client.Binance
@@ -16,7 +22,6 @@ data ClientManagerOptions = ClientManagerOptions
     { sleep :: Int
     }
 
--- TODO hide healthchekc and systemtime?
 data Service = Service
     { connect :: IO SystemStatus
     , disconnect :: IO SystemStatus

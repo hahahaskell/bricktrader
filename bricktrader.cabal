@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6c009b232b6afe7ff3669058c5df49222a957b9b0f53685749d56448a8410228
+-- hash: 62a458da2a42ef31c4d28e3a924d093f2a0f2adc3173f925913a2648a94ee04b
 
 name:           bricktrader
 version:        0.1.0.0
@@ -29,9 +29,10 @@ library
   exposed-modules:
       App
       Client.Binance
-      Service.BinanceClientManager
       Service.BookKeeper
       Service.BookMaker
+      Service.ClientManager
+      Service.ExchangeInfo
       Service.Wallet
       TUI
       Types

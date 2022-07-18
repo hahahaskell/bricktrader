@@ -3,16 +3,14 @@ module App where
 import Types
 import TUI
 import Brick
-import Brick.BChan (newBChan, writeBChan, BChan)
+import Brick.BChan (newBChan, writeBChan)
 import qualified Graphics.Vty as V
 import qualified Client.Binance as Binance
-import qualified Worker.HealthMonitoring as HealthMonitoring
-import Worker.HealthMonitoring
-import Control.Concurrent (threadDelay, forkIO)
+import Control.Concurrent (forkIO)
 import qualified Service.ClientManager as ClientManager
-import Control.Monad (forever, void)
-import Data.Text (Text)
-import Client.Binance (SystemStatus, Ticker)
+import Control.Monad (void)
+import qualified Service.ExchangeInfo as ExchangeInfo
+import qualified Data.Text as Text
 
 data AppState = AppState
   { appClient  :: ClientManager.Service
@@ -25,7 +23,7 @@ appMain :: IO ()
 appMain = do
   cfg <- V.standardIOConfig
   vty <- V.mkVty cfg
-  chan <- newBChan 5 -- chosen by dice throw haha, will block when exceeded
+  chan <- newBChan 5 -- will block when exceeded
 
   let app = App
         { appDraw         = drawUI
@@ -48,7 +46,7 @@ appMain = do
         , symbolsContent = []
         }
 
-  let hooks = ClientManager.Hooks
+  let clientManagerHooks = ClientManager.Hooks
         { disconnected = \_ -> writeBChan chan $ LogEvent "d/c"
         , connected = writeBChan chan $ LogEvent "online"
         }
@@ -60,24 +58,23 @@ appMain = do
   let clientManagerOptions = ClientManager.ClientManagerOptions
         { sleep = 1000
         }
+  let exchangeInfoOptions = ExchangeInfo.ExchangeInfoOptions
+        {
+        }
+  let exchangeInfoHooks = ExchangeInfo.Hooks {}
 
   binance <- Binance.createClient binanceOptions
-  clientManager <- ClientManager.createService clientManagerOptions binance hooks
+  clientManager <- ClientManager.createService clientManagerOptions binance clientManagerHooks
+  exchangeInfo <- ExchangeInfo.createService exchangeInfoOptions exchangeInfoHooks clientManager
 
-  void $ forkIO $ forever $ do
+  void $ forkIO $ do
     _ <- clientManager.connect
-    threadDelay $ 5 * oneSecond
-    _ <- clientManager.disconnect
+--     threadDelay $ 5 * oneSecond
+--     _ <- clientManager.disconnect
+    symbols <- exchangeInfo.getSymbols
+    writeBChan chan $ LogEvent $ Text.concat symbols
     return ()
 
-  -- void . forkIO . forever $ do
-  --    writeBChan chan $ LogEvent "test"
-  --    threadDelay $ 5 * oneSecond
-
   void $ customMain vty (V.mkVty cfg) (Just chan) app appContent
+  -- return()
 
-    -- setUncaughtExceptionHandler ""
-    -- void $ forkIO $ forever $ healthCheckJob bSess chan (1 * 1000000)
-    -- void $ forkIO $ forever $ tickerJob bSess chan (symbols config) (60 * 1000000)
-    -- void $ forkIO $ forever $ bookKeeperJob bSess oSess chan (60 * 1000000)
-    -- void $ forkIO $ forever $ bookMakerJob bSess chan (symbols config) (5 * 1000000)
