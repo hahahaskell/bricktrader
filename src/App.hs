@@ -1,6 +1,6 @@
-module App where
+module{-# LANGUAGE DuplicateRecordFields, DataKinds, FlexibleInstances, TypeApplications, FlexibleContexts, MultiParamTypeClasses, TypeFamilies, TypeOperators, GADTs, UndecidableInstances #-}App where
+{- HLINT ignore "Redundant bracket" -}
 
-import Types
 import TUI
 import Brick
 import Brick.BChan (newBChan, writeBChan)
@@ -10,7 +10,11 @@ import Control.Concurrent (forkIO)
 import qualified Service.ClientManager as ClientManager
 import Control.Monad (void)
 import qualified Service.ExchangeInfo as ExchangeInfo
-import qualified Data.Text as Text
+import qualified Service.Logger as Logger
+import Service.Logger (Verbosity(..))
+import qualified Brick.Widgets.List as L
+import qualified Data.Vector as Vec
+import TUI (AppContent(contentLogger, contentSymbolsList))
 
 data AppState = AppState
   { appClient  :: ClientManager.Service
@@ -33,17 +37,17 @@ appMain = do
         , appStartEvent   = return
         }
 
+-- TODO appContent should be included in App?
   let appContent = TUI.AppContent
-        { loggerContents = ["Brick Trader"]
-        , tickerContent = ""
-        , systemStatusContent = ""
-        , latencyContent = "0ms"
-        , orderWeightContent = ""
-        , weightCountContent = ""
-        , weightLimitContent = ""
-        , timeDeltaContent = "+0.02s"
-        , symbolsCountContent = "0"
-        , symbolsContent = []
+        { contentLogger = ["Brick Trader"]
+        , contentTicker = ""
+        , contentStatus = ""
+        , contentLatency = "0ms"
+        , contentWeightCount = ""
+        , contentWeightLimit = ""
+        , contentTimeDelta = "+0.02s"
+        , contentSymbols = []
+        , contentSymbolsList = L.list () (Vec.fromList []) 1
         }
 
   let clientManagerHooks = ClientManager.Hooks
@@ -51,28 +55,40 @@ appMain = do
         , connected = writeBChan chan $ LogEvent "online"
         }
 
-  let binanceOptions = BinanceOptions
+  let binanceOptions = Binance.BinanceOptions
         { apiKey = ""
         , apiSecret = ""
         }
-  let clientManagerOptions = ClientManager.ClientManagerOptions
-        { sleep = 1000
-        }
-  let exchangeInfoOptions = ExchangeInfo.ExchangeInfoOptions
-        {
-        }
-  let exchangeInfoHooks = ExchangeInfo.Hooks {}
+  let clientManagerOptions = ClientManager.Options
+        { sleep = 1000 }
+  let exchangeInfoOptions = ExchangeInfo.Options { }
+  let exchangeInfoHooks = ExchangeInfo.Hooks { }
+  let loggerOptions = Logger.Options
+            { verbosity = Information
+            }
+  let loggerHooks = Logger.Hooks
+            { logger = (writeBChan chan . LogEvent)
+            }
 
+  logger <- Logger.createService loggerOptions loggerHooks
   binance <- Binance.createClient binanceOptions
   clientManager <- ClientManager.createService clientManagerOptions binance clientManagerHooks
   exchangeInfo <- ExchangeInfo.createService exchangeInfoOptions exchangeInfoHooks clientManager
 
   void $ forkIO $ do
     _ <- clientManager.connect
+
+    -- init
+    symbols <- exchangeInfo.getSymbols
+    writeBChan chan $ SymbolListInitEvent symbols
+
+    -- run jobs
+
+--     let appContent = appContent { contentSymbolsList = L.list () (Vec.fromList []) 1 }
+
 --     threadDelay $ 5 * oneSecond
 --     _ <- clientManager.disconnect
-    symbols <- exchangeInfo.getSymbols
-    writeBChan chan $ LogEvent $ Text.concat symbols
+--     logger.logInfo $ Text.concat symbols
     return ()
 
   void $ customMain vty (V.mkVty cfg) (Just chan) app appContent

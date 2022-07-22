@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 62a458da2a42ef31c4d28e3a924d093f2a0f2adc3173f925913a2648a94ee04b
+-- hash: d0256759ebfb0cec54e42f60e8dfdfaa2ba1cfcb9dcf4a15c4292bcf817b0330
 
 name:           bricktrader
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
       Service.BookMaker
       Service.ClientManager
       Service.ExchangeInfo
+      Service.Logger
       Service.Wallet
       TUI
       Types
@@ -47,6 +48,7 @@ library
       OverloadedStrings
       LambdaCase
       DeriveAnyClass
+      TemplateHaskell
   ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints
   build-depends:
       SHA
@@ -83,6 +85,7 @@ executable bricktrader-exe
       OverloadedStrings
       LambdaCase
       DeriveAnyClass
+      TemplateHaskell
   ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       SHA
@@ -121,6 +124,7 @@ test-suite bricktrader-test
       OverloadedStrings
       LambdaCase
       DeriveAnyClass
+      TemplateHaskell
   ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       SHA

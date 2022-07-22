@@ -10,7 +10,7 @@ import Control.Monad.IO.Class
 import Data.Text (Text)
 import qualified Data.Text as Text
 
-data ExchangeInfoOptions = ExchangeInfoOptions
+data Options = Options
     {
     }
 
@@ -37,7 +37,7 @@ initExchangeInfo = Exchangeinfo
           , symbols = []
           }
 
-createService :: ExchangeInfoOptions -> Hooks -> ClientManager.Service -> IO Service
+createService :: Options -> Hooks -> ClientManager.Service -> IO Service
 createService options hooks client = do
 
   m <- newMVar Cache
@@ -73,6 +73,15 @@ getExchangeInfo (CacheState m) hooks client = do
       return $ case result of
         Success ex -> ex
         Failure bfr -> error $ "Failed to fetch exchange info from Binance." <> show bfr
+
+refresh_ :: CacheState -> Hooks -> ClientManager.Service -> IO ()
+refresh_ cache hooks client = do
+  info <- getExchangeInfo cache hooks client
+
+  -- get the exchange info then event the changes
+  -- to be manually run or on a schedule
+
+  return ()
 
 
 getSymbols_ :: CacheState -> Hooks -> ClientManager.Service -> IO [Text]

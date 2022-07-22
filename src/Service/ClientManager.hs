@@ -1,6 +1,6 @@
 module Service.ClientManager
   ( createService
-  , ClientManagerOptions (..)
+  , Options (..)
   , Hooks (..)
   , Service (..)
   )
@@ -18,7 +18,7 @@ import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import Network.Wreq.Lens (responseBody)
 
-data ClientManagerOptions = ClientManagerOptions
+data Options = Options
     { sleep :: Int
     }
 
@@ -43,7 +43,7 @@ data Hooks = Hooks
   -- , latency :: Latency -> IO
   }
 
-createService :: ClientManagerOptions -> Client -> Hooks -> IO Service
+createService :: Options -> Client -> Hooks -> IO Service
 createService options binance hooks = do
 
   m <- newMVar BinanceHealth

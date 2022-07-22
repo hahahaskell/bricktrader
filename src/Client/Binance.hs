@@ -1,7 +1,7 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 module Client.Binance
     ( createClient
     , Client
+    , BinanceOptions (..)
     , BinanceResult (..)
     , SystemStatus (..)
     , BinanceHttpResponse (..)
@@ -48,6 +48,11 @@ data BinanceFailureResult =
         | Retry String
     deriving (Show)
 
+data BinanceOptions = BinanceOptions
+  { apiKey :: String
+  , apiSecret :: String
+  }
+
 data Client
     = Client
     { healthCheck :: IO SystemStatus
@@ -83,13 +88,13 @@ createClient options = do
 
 -- | Internal HTTP IO
 
-class HasBinance a where
-    httpGetRaw :: Wreq.Session -> Url -> IO (BinanceHttpResponse (Response LBS.ByteString))
-    httpGet ::  FromJSON a => Wreq.Session -> Url -> IO (BinanceHttpResponse (Response a))
-    httpGetWith ::  FromJSON a => Wreq.Session -> Network.Wreq.Options -> Url -> IO (BinanceHttpResponse (Response a))
-    httpPostWith :: FromJSON a => Wreq.Session -> Network.Wreq.Options -> Body -> Url -> IO (BinanceHttpResponse (Response a))
+class (Monad m) => HasBinance m where
+    httpGetRaw :: Wreq.Session -> Url -> m (BinanceHttpResponse (Response LBS.ByteString))
+    httpGet ::  FromJSON a => Wreq.Session -> Url -> m (BinanceHttpResponse (Response a))
+    httpGetWith ::  FromJSON a => Wreq.Session -> Network.Wreq.Options -> Url -> m (BinanceHttpResponse (Response a))
+    httpPostWith :: FromJSON a => Wreq.Session -> Network.Wreq.Options -> Body -> Url -> m (BinanceHttpResponse (Response a))
 
-instance HasBinance a where
+instance HasBinance IO where
     httpGetRaw session url = (Ok <$> Wreq.get session url) `catch` httpHandle
     httpGet session url = (Ok <$> (asJSON =<< Wreq.get session url)) `catch` httpHandle
     httpGetWith session opts url = (Ok <$> (asJSON =<< Wreq.getWith opts session url)) `catch` httpHandle
@@ -130,7 +135,7 @@ data SystemStatus =
     | Offline Text
     deriving (Show, Eq)
 
-healthCheck_ :: Wreq.Session -> IO SystemStatus
+healthCheck_ :: (HasBinance m) => Wreq.Session -> m SystemStatus
 healthCheck_ session = do
     response <- httpGetRaw session "https://api.binance.com/sapi/v1/system/status"
 

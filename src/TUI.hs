@@ -1,4 +1,3 @@
-
 module TUI
   ( AppContent (..),
     AppEvents (..),
@@ -13,24 +12,30 @@ import Brick
 import Brick.BChan (writeBChan, BChan)
 import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Border as B
+import qualified Brick.Widgets.List as L
 import qualified Brick.Types as T
 import qualified Graphics.Vty as V
 import Data.Text (Text, pack)
 import Data.Time ( defaultTimeLocale, getZonedTime, formatTime )
-import Client.Binance (SystemStatus (..), Ticker, WeightCount)
+import Client.Binance (SystemStatus (..), Ticker)
+import qualified Brick.Widgets.Center as C
+import qualified Data.Vector as Vec
+import Graphics.Vty (withForeColor)
+import qualified Data.Char as Char
+import Control.Lens ((^.))
 
 data AppContent = AppContent
-    { loggerContents :: [Text]
-    , tickerContent :: String
-    , systemStatusContent :: String
-    , latencyContent :: String
-    , orderWeightContent :: String
-    , weightCountContent :: String
-    , weightLimitContent :: String
-    , timeDeltaContent :: String
-    , symbolsCountContent :: String
-    , symbolsContent :: [String]
+    { contentLogger :: [Text]
+    , contentTicker :: String
+    , contentStatus :: String
+    , contentLatency :: String
+    , contentWeightCount :: String
+    , contentWeightLimit :: String
+    , contentTimeDelta :: String
+    , contentSymbols :: [String]
+    , contentSymbolsList :: L.List () Text
     }
+$(suffixLenses ''AppContent)
 
 data AppEvents =
      LogEvent Text
@@ -38,66 +43,57 @@ data AppEvents =
      | TickerEvent [Ticker]
      | WeightEvent WeightCount
      | LatencyEvent Millisecond
+     | SymbolListInitEvent [Text]
+     | SymbolListAddEvent Text
+     | SymbolListRemoveEvent Text
 
 drawUI :: AppContent -> [Widget ()]
-drawUI s = [a]
+drawUI s = [ui]
     where
-        a = withAttr "headerbarAttr" $
-            hBox [ str "BrickTrader"
-                 , padLeft Max $ hBox [ padLeftRight 1 (str "[") , str (latencyContent s) , padLeft (Pad 1) (str "]")
-                                      , padLeftRight 1 (str "[") , str (timeDeltaContent s) , padLeft (Pad 1) (str "]")
-                                      , padLeftRight 1 (str "[") , str (weightCountContent s) , padLeft (Pad 1) (str "]")
-                                      , padLeftRight 1 (str "[") , str (systemStatusContent s) , padLeft (Pad 1) (str "]")
-                                      ]
-                 ]
+        ui =
+            hBox [ withAttr "headerbarAttr" $ str "BrickTrader"
+                 , withAttr "headerbarAttr" $ padLeft Max $ hBox [
+                                      padLeftRight 1 (str "[") , str (contentLatency s) , padLeft (Pad 1) (str "]")
+                                     , padLeftRight 1 (str "[") , str (contentTimeDelta s) , padLeft (Pad 1) (str "]")
+                                     , padLeftRight 1 (str "[") , str (contentWeightLimit s) , padLeft (Pad 1) (str "]")
+                                     , padLeftRight 1 (str "[") , str (contentStatus s) , padLeft (Pad 1) (str "]")
+                                     ]
+                ]
+            <=> hBox [ str $ contentTicker s ]
+            <=> hBox [  vBox [ withBorderStyle BS.unicode $ B.border (renderGraph (txtWrap <$> ["blahhh"]))
+                             , vLimitPercent 20 $ withBorderStyle BS.unicode $ B.border (renderBottomUp (txtWrap <$> contentLogger s))
+                             ]
+                     , hLimitPercent 20 (vBox [
+                        --  withBorderStyle BS.unicode $ B.border $ vBox [ str ("Binance: " ++ contentStatus s) <+> padLeft Max (str $ contentWeightCount s) , B.hBorder ],
+                         withBorderStyle BS.unicode $ B.border $ L.renderList drawListElement True s.contentSymbolsList
+                                              ]
+                                        )
+                     ]
+            <=> withAttr "statusbarAttr" (padRight Max $ str "[O] Order [Q] Quit [?] Help")
 
-            <=> hBox [ withAttr "loggerAttr" $ withBorderStyle BS.unicodeRounded $ B.border (renderBottomUp (txtWrap <$> loggerContents s)) ]
-            <=> withAttr "statusLine" (padRight Max $ str "[O] Order [Q] Quit [H] Help")
-
-            -- <+> padLeftRight 1 (str "[") , str (healthCheckContent s) , padLeft (Pad 1) (str "]")
-        --    <=> withAttr "statusLine" (padRight Max $ str "[O] Order [Q] Quit [H] Help")
-            -- B.border $
-            -- str "BrickTrader"
-            -- -- <+> padLeft Max $ hLimit 40
-            -- <+> hLimit 40 (str "this")
-            -- <+> (str (healthCheckContent s))
-            -- <+> C.hCenter (str "date")
-            -- <+> (str (weightCountContent s))
-            -- B.border $ hBox [ str (weightCountContent s), str (healthCheckContent s) ]
-
-            -- B.border $ padLeft Max $ str (healthCheckContent s)
-
-            --  str (tickerContent s)
-
-            -- hBox [str $ tickerContent s,
-                --
-                --  ]
-            -- <=> hBox  [ withBorderStyle BS.unicode $ B.border (renderBottomUp (txtWrap <$> loggerContents s))
-            --           , hLimitPercent 35 (vBox [ withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "current assets"),
-            --                                      withBorderStyle BS.unicodeRounded $ B.border ( C.center $ str "pending buy orders"),
-            --                                      withBorderStyle BS.unicodeRounded
-            --                                       $ B.border $ vBox [ str ("Binance: " ++ binanceStatusContent s) <+> padLeft Max (str $ weightCountContent s)
-            --                                                         , B.hBorder
-            --                                                         , renderBottomUp (txtWrap <$> binanceLoggerContents s) --                                                         ]
-            --                                     ])
-            --         ]
-            -- <=> withAttr "statusLine" (padRight Max $ str "[O] Order [Q] Quit [H] Help")
+        drawListElement :: (Show a) => Bool -> a -> Widget ()
+        drawListElement sel a = str $ filter Char.isLetter (show a)
+                -- selected s = if sel then withAttr
 
 theMap :: AttrMap
 theMap = attrMap V.defAttr
     [ ("headerbarAttr", V.brightBlack `on` V.brightWhite)
     , ("statusbarAttr", V.white `on` V.blue)
     , ("loggerAttr", V.white `on` V.black)
+    , (L.listAttr, V.defAttr `withForeColor` V.white)
+    , (L.listSelectedAttr, V.blue `on` V.white)
     ]
 
 handleEvent :: AppContent -> T.BrickEvent () AppEvents -> T.EventM () (T.Next AppContent)
-handleEvent s (AppEvent (LogEvent l)) = continue $ s { loggerContents = l : loggerContents s }
+handleEvent s (AppEvent (LogEvent l)) = continue $ s { contentLogger = l : contentLogger s }
 -- handleEvent s (AppEvent (TickerEvent p)) = continue $ s { tickerContent = handleTickerEvent p }
-handleEvent s (AppEvent (StatusEvent t)) = continue $ s { systemStatusContent = handleStatusEvent t }
-handleEvent s (AppEvent (WeightEvent w)) = continue $ s { weightCountContent = handleWeightEvent w }
-handleEvent s (AppEvent (LatencyEvent m)) = continue $ s { latencyContent = handleLatencyEvent m }
+handleEvent s (AppEvent (StatusEvent t)) = continue $ s { contentStatus = handleStatusEvent t }
+handleEvent s (AppEvent (SymbolListInitEvent t)) = continue $ s { contentSymbolsList = L.list () (Vec.fromList t) 1}
+handleEvent s (AppEvent (WeightEvent w)) = continue $ s { contentWeightCount = handleWeightEvent w }
+handleEvent s (AppEvent (LatencyEvent m)) = continue $ s { contentLatency = handleLatencyEvent m }
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
+handleEvent s (VtyEvent e) = continue =<< handleEventLensed s contentSymbolsListL (L.handleListEvent) e
 handleEvent s _ = continue s
 
 -- handleTickerEvent :: [Ticker] -> String
@@ -198,6 +194,13 @@ logger c m = do
         return ()
     where
         logDateTime = formatTime defaultTimeLocale "%b %e %T > "
+
+renderGraph :: [Widget n] -> Widget n
+renderGraph ws =
+    Widget Greedy Greedy $ do
+        ctx <- getContext
+        let a = ctx^.attrL
+        render $ fill ' '
 
 renderBottomUp :: [Widget n] -> Widget n
 renderBottomUp ws =

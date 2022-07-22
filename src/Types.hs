@@ -1,6 +1,8 @@
 module Types where
 
 import Data.ByteString (ByteString)
+import GHC.Generics
+import Data.Aeson (FromJSON (..), withObject, (.:))
 
 type Second = Int
 type Millisecond = Int
@@ -19,25 +21,16 @@ type ApiKey = String
 type RetryAttempt = Int
 type FailureMessage = String
 
-
 oneSecond :: MicroSecond
 oneSecond = 1000000
 
-data BinanceOptions = BinanceOptions
+data Config = Config
   { apiKey :: String
   , apiSecret :: String
-  }
+  } deriving (Show, Generic)
 
--- may remove this
--- data BrickTraderConfig = BrickTraderConfig
---         { apiKey :: String
---         , apiSecret :: String
---         , symbols :: [Text]
---         } deriving (Show, Generic)
-
--- instance FromJSON BrickTraderConfig where
---     parseJSON = withObject "Config" $ \c ->
---             BrickTraderConfig <$> c .: "apiKey"
---                               <*> c .: "apiSecret"
---                               <*> c .: "symbols"
+instance FromJSON Config where
+    parseJSON = withObject "Config" $ \c ->
+                      Config <$> c .: "apiKey"
+                             <*> c .: "apiSecret"
 
