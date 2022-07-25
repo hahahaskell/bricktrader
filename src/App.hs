@@ -48,6 +48,7 @@ appMain = do
         , contentTimeDelta = "+0.02s"
         , contentSymbols = []
         , contentSymbolsList = L.list () (Vec.fromList []) 1
+        , contentSelectedSymbol = ""
         }
 
   let clientManagerHooks = ClientManager.Hooks

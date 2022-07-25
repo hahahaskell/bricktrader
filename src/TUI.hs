@@ -9,6 +9,35 @@ where
 
 import Types
 import Brick
+    ( attrMap,
+      continue,
+      halt,
+      attrL,
+      getContext,
+      handleEventLensed,
+      suffixLenses,
+      on,
+      (<=>),
+      fill,
+      hBox,
+      hLimitPercent,
+      padLeft,
+      padLeftRight,
+      padRight,
+      raw,
+      str,
+      txtWrap,
+      vBox,
+      vLimitPercent,
+      withAttr,
+      withBorderStyle,
+      AttrMap,
+      Padding(Max, Pad),
+      Size(Greedy),
+      Widget(Widget, render),
+      BrickEvent(VtyEvent, AppEvent),
+      Context(availHeight),
+      Result(image) )
 import Brick.BChan (writeBChan, BChan)
 import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Border as B
@@ -22,7 +51,8 @@ import qualified Brick.Widgets.Center as C
 import qualified Data.Vector as Vec
 import Graphics.Vty (withForeColor)
 import qualified Data.Char as Char
-import Control.Lens ((^.))
+import Control.Lens ((^.), view, set)
+import Data.Text (unpack)
 
 data AppContent = AppContent
     { contentLogger :: [Text]
@@ -34,6 +64,7 @@ data AppContent = AppContent
     , contentTimeDelta :: String
     , contentSymbols :: [String]
     , contentSymbolsList :: L.List () Text
+    , contentSelectedSymbol :: Text
     }
 $(suffixLenses ''AppContent)
 
@@ -51,7 +82,7 @@ drawUI :: AppContent -> [Widget ()]
 drawUI s = [ui]
     where
         ui =
-            hBox [ withAttr "headerbarAttr" $ str "BrickTrader"
+            hBox [ withAttr "headerbarAttr" $ str "BrickTrader" --,  str $ unpack s.contentSelectedSymbol
                  , withAttr "headerbarAttr" $ padLeft Max $ hBox [
                                       padLeftRight 1 (str "[") , str (contentLatency s) , padLeft (Pad 1) (str "]")
                                      , padLeftRight 1 (str "[") , str (contentTimeDelta s) , padLeft (Pad 1) (str "]")
@@ -60,7 +91,7 @@ drawUI s = [ui]
                                      ]
                 ]
             <=> hBox [ str $ contentTicker s ]
-            <=> hBox [  vBox [ withBorderStyle BS.unicode $ B.border (renderGraph (txtWrap <$> ["blahhh"]))
+            <=> hBox [  vBox [ withBorderStyle BS.unicode $ B.border (renderGraph (txtWrap <$> [s.contentSelectedSymbol]))
                              , vLimitPercent 20 $ withBorderStyle BS.unicode $ B.border (renderBottomUp (txtWrap <$> contentLogger s))
                              ]
                      , hLimitPercent 20 (vBox [
@@ -72,8 +103,12 @@ drawUI s = [ui]
             <=> withAttr "statusbarAttr" (padRight Max $ str "[O] Order [Q] Quit [?] Help")
 
         drawListElement :: (Show a) => Bool -> a -> Widget ()
-        drawListElement sel a = str $ filter Char.isLetter (show a)
-                -- selected s = if sel then withAttr
+        drawListElement _sel a = str $ prettyPrint a
+                                -- if sel
+                                -- -- then withAttr "headerbarAttr" $ str $ prettyPrint a
+                                -- else str $ prettyPrint a
+                where
+                    prettyPrint = filter Char.isLetter . show
 
 theMap :: AttrMap
 theMap = attrMap V.defAttr
@@ -91,10 +126,13 @@ handleEvent s (AppEvent (StatusEvent t)) = continue $ s { contentStatus = handle
 handleEvent s (AppEvent (SymbolListInitEvent t)) = continue $ s { contentSymbolsList = L.list () (Vec.fromList t) 1}
 handleEvent s (AppEvent (WeightEvent w)) = continue $ s { contentWeightCount = handleWeightEvent w }
 handleEvent s (AppEvent (LatencyEvent m)) = continue $ s { contentLatency = handleLatencyEvent m }
+handleEvent s (VtyEvent (V.EvKey (V.KEnter) [])) = handleListSelectionEvent s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'Q') [])) = halt s
 handleEvent s (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt s
 handleEvent s (VtyEvent e) = continue =<< handleEventLensed s contentSymbolsListL (L.handleListEvent) e
 handleEvent s _ = continue s
+
+-- new <- pure $ L.listInsert 0 ("b"::Text) (L.list () (Vec.fromList ["a"]) 1)
 
 -- handleTickerEvent :: [Ticker] -> String
 -- handleTickerEvent pr = "| " ++ foldMap format pr
@@ -104,6 +142,11 @@ handleEvent s _ = continue s
 --         percent t = read $ unpack (tickerPriceChangePercent t) :: Double
 --         lastPrice t =  read $ unpack (tickerLastPrice t) :: Double
 --         arrow p = if p < 0 then '⯆' else '⯅'
+
+handleListSelectionEvent :: AppContent -> T.EventM n (T.Next AppContent)
+handleListSelectionEvent s = case L.listSelectedElement s.contentSymbolsList of
+                                Nothing -> continue s
+                                Just (_, e) -> continue $ s { contentSelectedSymbol = e }
 
 handleStatusEvent :: SystemStatus -> String
 handleStatusEvent Online = "Online" -- "🟢"
@@ -116,91 +159,14 @@ handleWeightEvent w =  show w ++ "/1200"
 handleLatencyEvent :: Millisecond -> String
 handleLatencyEvent m = show m ++ "ms"
 
--- bookKeeperJob :: BinanceSessionState  -> BinanceOrderState -> BChan AppEvents -> Int -> IO ()
--- bookKeeperJob bSess@(BinanceSessionState m) oSess@(BinanceOrderState mos) chan delay = do
---     r <- binanceExchangeInfo bSess oSess
-
---     -- case r of
---     --   Left (book, weight) -> do
---     --        writeBChan chan $ WeightEvent weight
---     --        writeBChan chan $ BinanceLogEvent $ pack $ logDateTime now ++ "Got book keeper prices."
---     --        pure ()
---     --   Right s -> logger chan $  "Failed to get books: " ++ s
-
---     threadDelay delay
---     where
---         -- logDateTime = formatTime defaultTimeLocale "%b %e %T > "
-
--- bookMakerJob :: BinanceSessionState  -> BChan AppEvents -> [Text] -> Int -> IO ()
--- bookMakerJob bSess@(BinanceSessionState m) chan symbols delay = do
---     r <- recordBookerPrice bSess symbols
---     now <- getZonedTime
-
---     case r of
---       Left (book, weight) -> do
---            writeBChan chan $ WeightEvent weight
---         --    writeBChan chan $ BinanceLogEvent $ pack $ logDateTime now ++ "Got book keeper prices."
---            pure ()
---       Right s -> pure ()
-
---     threadDelay delay
---     where
---         -- logDateTime = formatTime defaultTimeLocale "%b %e %T > "
-
--- -- Monitors the gateway endpoint for system outages, maintenance or high latency
--- healthCheckJob :: BinanceSessionState -> BChan AppEvents -> Int -> IO ()
--- healthCheckJob bSess@(BinanceSessionState m) chan delay = do
---     state <- takeMVar m
---     putMVar m state
-
---     let previousHealth = status state
---     (health, latency) <- healthCheck bSess
---     writeBChan chan $ StatusEvent health
---     writeBChan chan $ LatencyEvent latency
-
---     case (previousHealth, health) of
---         (Online, Offline _) -> logger chan "Binance is offline."
---         (Offline _, Online) -> logger chan "Binance is online."
---         (Maintenance _, Online) -> logger chan "Binance is online."
---         (_, Maintenance s) -> logger chan $ "Binance is down for maintenance." ++ show s
---         _ -> pure ()
-
---     threadDelay delay
-
--- tickerJob :: BinanceSessionState -> BChan AppEvents -> [Text] -> Int -> IO ()
--- tickerJob (BinanceSessionState m) chan symbols delay = do
---     state <- takeMVar m
---     putMVar m state
-
---     if status state == Online then do
---         prices <- ticker $ session state
-
---         case prices of
---             Success (p,w) -> do
---                 writeBChan chan $ TickerEvent $ filter match p
---                 writeBChan chan $ WeightEvent w
---             Failure s  -> logger chan $ "Error fetching ticker prices: " ++ show s
---     else
---         pure ()
-
---     threadDelay delay
---     where
---         match p = tickerSymbol p `elem` symbols
-
-logger :: BChan AppEvents -> String -> IO ()
-logger c m = do
-        now <- getZonedTime
-        writeBChan c $ LogEvent $ pack $ logDateTime now ++ m
-        return ()
-    where
-        logDateTime = formatTime defaultTimeLocale "%b %e %T > "
-
 renderGraph :: [Widget n] -> Widget n
 renderGraph ws =
     Widget Greedy Greedy $ do
         ctx <- getContext
+
         let a = ctx^.attrL
-        render $ fill ' '
+        render $ ws !! 0
+        -- render $ fill 'r'
 
 renderBottomUp :: [Widget n] -> Widget n
 renderBottomUp ws =
