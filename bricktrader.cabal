@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d0256759ebfb0cec54e42f60e8dfdfaa2ba1cfcb9dcf4a15c4292bcf817b0330
+-- hash: 18a930386f098b1bcf076e2d7c569d956383636f2eac4e6c1b0dcb82319bfe0c
 
 name:           bricktrader
 version:        0.1.0.0
@@ -86,7 +86,7 @@ executable bricktrader-exe
       LambdaCase
       DeriveAnyClass
       TemplateHaskell
-  ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -F -pgmF record-dot-preprocessor -Wall -Wcompat -Widentities -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -split-sections
   build-depends:
       SHA
     , aeson
